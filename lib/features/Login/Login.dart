@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import 'package:http/http.dart' as http;
+import 'dart:convert';
 import '../../core/constants/color_managers.dart';
 import '../Home/HomeScreen.dart';
 
@@ -12,16 +14,79 @@ class LoginScreen extends StatefulWidget {
 class _LoginScreenState extends State<LoginScreen> {
   String? selectedUser;
   final TextEditingController passwordController = TextEditingController();
+  List<String> users = [];
+  bool isLoading = false;
 
-  final List<String> users = ["User 01", "User 02", "User 03", "User 04"];
+  @override
+  void initState() {
+    super.initState();
+    fetchUsers();
+  }
 
-  void login() {
-    if (selectedUser != null && passwordController.text.isNotEmpty) {
-      // ✅ لو الباسورد موجود واليوزر متحدد
-      Navigator.pushReplacement(
-        context,
-        MaterialPageRoute(builder: (_) => const HomeScreen()),
+  /// جلب المستخدمين من الـ API
+  Future<void> fetchUsers() async {
+    setState(() => isLoading = true);
+    try {
+      final response =
+      await http.get(Uri.parse("http://irs.evioteg.com:8080/api/user"));
+
+      if (response.statusCode == 200) {
+        final List<dynamic> data = jsonDecode(response.body);
+        setState(() {
+          users = data.map((u) => u["userName"].toString()).toList();
+        });
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text("Failed to fetch users: ${response.statusCode}")),
+        );
+      }
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text("Error fetching users: $e")),
       );
+    }
+    setState(() => isLoading = false);
+  }
+
+  /// تسجيل الدخول
+  Future<void> login() async {
+    if (selectedUser != null && passwordController.text.isNotEmpty) {
+      try {
+        final response =
+        await http.get(Uri.parse("http://irs.evioteg.com:8080/api/user"));
+
+        if (response.statusCode == 200) {
+          final List<dynamic> users = jsonDecode(response.body);
+
+          final user = users.firstWhere(
+                (u) =>
+            u["userName"] == selectedUser &&
+                u["loginPassWord"] == passwordController.text &&
+                u["inactive"] == 0,
+            orElse: () => null,
+          );
+
+          if (user != null) {
+            // ✅ تسجيل دخول ناجح
+            Navigator.pushReplacement(
+              context,
+              MaterialPageRoute(builder: (_) => const HomeScreen()),
+            );
+          } else {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(content: Text("Invalid username or password")),
+            );
+          }
+        } else {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text("Login failed: ${response.statusCode}")),
+          );
+        }
+      } catch (e) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text("Error: $e")),
+        );
+      }
     } else {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text("Please select a user and enter password")),
@@ -31,27 +96,29 @@ class _LoginScreenState extends State<LoginScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final size = MediaQuery.of(context).size; // أبعاد الشاشة
-    final isTablet = size.width > 600; // لو العرض أكبر من 600 يبقى تابلت
+    final size = MediaQuery.of(context).size;
+    final isTablet = size.width > 600;
 
     return Scaffold(
       appBar: AppBar(
         backgroundColor: ColorManagers.kDarkBlue,
-        centerTitle: true, // يخلي العنوان في النص
+        centerTitle: true,
         title: Text(
           "Login",
           style: TextStyle(
             color: ColorManagers.kWhite,
-            fontSize: isTablet ? 26 : 20, // حجم الخط حسب الشاشة
+            fontSize: isTablet ? 26 : 20,
             fontWeight: FontWeight.bold,
           ),
         ),
       ),
       backgroundColor: Colors.white,
       body: Center(
-        child: SingleChildScrollView(
+        child: isLoading
+            ? const CircularProgressIndicator()
+            : SingleChildScrollView(
           padding: EdgeInsets.symmetric(
-            horizontal: isTablet ? size.width * 0.2 : 20, // مسافة جانبية نسبية
+            horizontal: isTablet ? size.width * 0.2 : 20,
             vertical: 20,
           ),
           child: Column(
@@ -68,7 +135,8 @@ class _LoginScreenState extends State<LoginScreen> {
                       isSelected ? Colors.blue.shade100 : Colors.white,
                       foregroundColor: Colors.blue.shade900,
                       side: const BorderSide(color: Colors.blue),
-                      minimumSize: Size(double.infinity, isTablet ? 60 : 50),
+                      minimumSize:
+                      Size(double.infinity, isTablet ? 60 : 50),
                       shape: RoundedRectangleBorder(
                         borderRadius: BorderRadius.circular(10),
                       ),
@@ -83,7 +151,9 @@ class _LoginScreenState extends State<LoginScreen> {
                       style: TextStyle(
                         fontWeight: FontWeight.bold,
                         fontSize: isTablet ? 20 : 16,
-                        color: isSelected ? Colors.blue.shade900 : Colors.blue,
+                        color: isSelected
+                            ? Colors.blue.shade900
+                            : Colors.blue,
                       ),
                     ),
                   ),
