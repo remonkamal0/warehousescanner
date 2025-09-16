@@ -1,29 +1,26 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
-class ScanScreen extends StatefulWidget {
+class ReScanScreen extends StatefulWidget {
   final String soNumber; // رقم الـ S.O اللي جاي من الشاشة السابقة
-  const ScanScreen({super.key, required this.soNumber});
+  const ReScanScreen({super.key, required this.soNumber});
 
   @override
-  State<ScanScreen> createState() => _ScanScreenState();
+  State<ReScanScreen> createState() => _ReScanScreenState();
 }
 
-class _ScanScreenState extends State<ScanScreen> {
-  // ===== Mock Data (غيّرها ببيانات API لاحقًا) =====
+class _ReScanScreenState extends State<ReScanScreen> {
+  // بيانات تجريبية (بدلها ببيانات API لاحقًا)
   final List<_SoLine> lines = [
-    _SoLine(code: 'GLCWC1', desc: 'GAME LEAF CIGARILLOS WHITE CHOC', remaining: 1, scanned: 1, unit: 'ea'),
-    _SoLine(code: 'SLRC',   desc: 'Desc SLRC',  remaining: 1, scanned: 1, unit: 'ea'),
-    _SoLine(code: 'SLV',    desc: 'Desc SLV',   remaining: 1, scanned: 1, unit: 'ea'),
-    _SoLine(code: 'SSLDL',  desc: 'Desc SSLDL', remaining: 1, scanned: 1, unit: 'ea'),
-    _SoLine(code: 'SSLH49', desc: 'Desc SSLH49',remaining: 1, scanned: 1, unit: 'ea'),
-    _SoLine(code: 'SSLL1C2',desc: 'Desc SSLL1C2',remaining: 1, scanned: 1, unit: 'ea'),
+    _SoLine(code: 'GLCWC1', desc: 'GAME LEAF CIGARILLOS WHITE CHOC', remaining: 3, scanned: 1, unit: 'ea'),
+    _SoLine(code: 'SLRC',   desc: 'Desc SLRC',  remaining: 2, scanned: 0, unit: 'ea'),
+    _SoLine(code: 'SLV',    desc: 'Desc SLV',   remaining: 4, scanned: 2, unit: 'ea'),
+    _SoLine(code: 'SSLDL',  desc: 'Desc SSLDL', remaining: 5, scanned: 5, unit: 'ea'),
   ];
 
   int? selectedIndex;
   _SoLine? get selectedLine => (selectedIndex != null) ? lines[selectedIndex!] : null;
 
-  // كمية الإدخال
   final TextEditingController qtyCtrl = TextEditingController(text: '0');
   int get qty => int.tryParse(qtyCtrl.text) ?? 0;
   set qty(int v) => qtyCtrl.text = v.toString();
@@ -37,18 +34,17 @@ class _ScanScreenState extends State<ScanScreen> {
   void _selectRow(int index) {
     setState(() {
       selectedIndex = index;
-      qty = 0; // ابدأ من صفر كل مرة تختار سطر
+      qty = 0;
     });
   }
 
-  // ⚠️ التحذير لا يمنع الزيادة
   void _incQty() {
     if (selectedLine == null) return;
     final next = qty + 1;
     qty = next;
     setState(() {});
     final maxCanAdd = selectedLine!.remaining - selectedLine!.scanned;
-    if (next > maxCanAdd) _showOverDialog(); // مجرد Warning
+    if (next > maxCanAdd) _showOverDialog();
   }
 
   void _decQty() {
@@ -56,10 +52,8 @@ class _ScanScreenState extends State<ScanScreen> {
     final next = (qty - 1).clamp(0, 1 << 31);
     qty = next;
     setState(() {});
-    // لا يحتاج تحذير في النقصان
   }
 
-  // إدخال يدوي
   void _onQtyChanged(String v) {
     if (selectedLine == null) return;
     final val = int.tryParse(v) ?? 0;
@@ -68,26 +62,23 @@ class _ScanScreenState extends State<ScanScreen> {
       setState(() {});
       return;
     }
-    setState(() {}); // حدّث الواجهة
+    setState(() {});
     final maxCanAdd = selectedLine!.remaining - selectedLine!.scanned;
-    if (val > maxCanAdd) _showOverDialog(); // تحذير فقط
+    if (val > maxCanAdd) _showOverDialog();
   }
 
-  // ⚠️ التحذير لا يمنع الإضافة — هيضيف وبعدين ينبه لو زاد عن المتاح
   void _addQty() {
     if (selectedLine == null || qty == 0) return;
 
     setState(() {
-      selectedLine!.scanned += qty; // نضيف حتى لو هتعدّي
+      selectedLine!.scanned += qty;
       qty = 0;
     });
 
     final maxAllowed = selectedLine!.remaining;
     if (selectedLine!.scanned > maxAllowed) {
-      _showOverDialog(); // Warning فقط
+      _showOverDialog();
     }
-
-    // TODO: استدعاء API لتحديث السطر (POST/PUT)
   }
 
   void _clearLine() {
@@ -96,12 +87,9 @@ class _ScanScreenState extends State<ScanScreen> {
       selectedLine!.scanned = 0;
       qty = 0;
     });
-    // TODO: API لإرجاع السطر لحالته
   }
 
-  void _done() async {
-    // TODO: استدعاء API للتأكيد/الحفظ النهائي
-    if (!mounted) return;
+  void _done() {
     Navigator.pop(context);
   }
 
@@ -120,7 +108,7 @@ class _ScanScreenState extends State<ScanScreen> {
         actions: [
           ElevatedButton(
             style: ElevatedButton.styleFrom(
-              backgroundColor: const Color(0xFF2F76D2),
+              backgroundColor: Colors.green,
               shape: const StadiumBorder(),
             ),
             onPressed: () => Navigator.pop(context),
@@ -138,20 +126,19 @@ class _ScanScreenState extends State<ScanScreen> {
 
     return Scaffold(
       appBar: AppBar(
-        backgroundColor: const Color(0xFF2F76D2),
+        backgroundColor: Colors.green,
         centerTitle: true,
         leading: IconButton(
           icon: const Icon(Icons.arrow_back, color: Colors.white),
           onPressed: () => Navigator.pop(context),
         ),
         title: Text(
-          'Scan - ${widget.soNumber}',
+          'Re-Scan - ${widget.soNumber}',
           style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w800),
         ),
       ),
       body: Column(
         children: [
-          // ===== الجدول =====
           Expanded(
             child: SingleChildScrollView(
               scrollDirection: Axis.vertical,
@@ -169,7 +156,7 @@ class _ScanScreenState extends State<ScanScreen> {
                   return DataRow(
                     selected: selected,
                     color: MaterialStateProperty.resolveWith<Color?>(
-                          (states) => selected ? const Color(0xFFE0ECFF) : null,
+                          (states) => selected ? const Color(0xFFE0F7E9) : null,
                     ),
                     onSelectChanged: (_) => _selectRow(i),
                     cells: [
@@ -184,7 +171,7 @@ class _ScanScreenState extends State<ScanScreen> {
             ),
           ),
 
-          // ===== اللوحة السفلية =====
+          // اللوحة السفلية
           Container(
             width: double.infinity,
             padding: EdgeInsets.symmetric(
@@ -226,8 +213,7 @@ class _ScanScreenState extends State<ScanScreen> {
                         onPressed: () => Navigator.pop(context),
                         style: OutlinedButton.styleFrom(
                           padding: const EdgeInsets.symmetric(vertical: 14),
-                          shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(10)),
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
                         ),
                         child: const Text('Cancel'),
                       ),
@@ -237,10 +223,9 @@ class _ScanScreenState extends State<ScanScreen> {
                       child: ElevatedButton(
                         onPressed: _done,
                         style: ElevatedButton.styleFrom(
-                          backgroundColor: const Color(0xFF2F76D2),
+                          backgroundColor: Colors.green,
                           padding: const EdgeInsets.symmetric(vertical: 14),
-                          shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(10)),
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
                         ),
                         child: const Text(
                           'Done',
@@ -272,7 +257,6 @@ class _ScanScreenState extends State<ScanScreen> {
     );
   }
 
-  // صندوق الكمية: +  [ TextField ]  –
   Widget _qtyBox({required bool isTablet}) {
     final tfWidth = isTablet ? 90.0 : 70.0;
 
@@ -285,7 +269,6 @@ class _ScanScreenState extends State<ScanScreen> {
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          // زر –
           InkWell(
             onTap: selectedLine == null ? null : _decQty,
             child: const Padding(
@@ -293,8 +276,6 @@ class _ScanScreenState extends State<ScanScreen> {
               child: Icon(Icons.remove, size: 20),
             ),
           ),
-
-          // حقل إدخال يدوي
           SizedBox(
             width: tfWidth,
             child: TextField(
@@ -315,8 +296,6 @@ class _ScanScreenState extends State<ScanScreen> {
               enabled: selectedLine != null,
             ),
           ),
-
-          // زر +
           InkWell(
             onTap: selectedLine == null ? null : _incQty,
             child: const Padding(

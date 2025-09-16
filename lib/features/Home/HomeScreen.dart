@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../Get S.O.s/Get S.O.s.dart';
+import '../Re-Scan S.O.s/Re-Scan S.O.s.dart';
 import '../SendSOSScreen/SendSOSScreen.dart';
 
 class HomeScreen extends StatelessWidget {
@@ -51,6 +52,25 @@ class HomeScreen extends StatelessWidget {
                     context,
                     MaterialPageRoute(
                       builder: (_) => const GetSOSScreen(),
+                    ),
+                  );
+                },
+              ),
+              SizedBox(height: gap),
+
+              // زر Re-Scan S.O.s (أخضر)
+              _ActionButton(
+                label: 'Re-Scan S.O.s',
+                bg: const Color(0xFF27AE60), // أخضر
+                shadow: const Color(0x3327AE60),
+                height: btnHeight,
+                radius: btnRadius,
+                fontSize: fontSize,
+                onTap: () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (_) => const ReScanSOSScreen(),
                     ),
                   );
                 },
