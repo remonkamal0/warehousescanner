@@ -150,7 +150,7 @@ class _GetSOSScreenState extends State<GetSOSScreen> {
                   }
                 },
                 child: Text(
-                  "Scan",
+                  "Get",
                   style: TextStyle(
                     fontSize: isTablet ? 22 : 18,
                     fontWeight: FontWeight.bold,

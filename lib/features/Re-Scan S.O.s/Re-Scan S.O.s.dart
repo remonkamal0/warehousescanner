@@ -148,7 +148,7 @@ class _ReScanSOSScreenState extends State<ReScanSOSScreen> {
                   }
                 },
                 child: Text(
-                  "Re-Scan",
+                  "Get",
                   style: TextStyle(
                     fontSize: isTablet ? 22 : 18,
                     fontWeight: FontWeight.bold,

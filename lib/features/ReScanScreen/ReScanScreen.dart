@@ -44,7 +44,7 @@ class _ReScanScreenState extends State<ReScanScreen> {
     qty = next;
     setState(() {});
     final maxCanAdd = selectedLine!.remaining - selectedLine!.scanned;
-    if (next > maxCanAdd) _showOverDialog();
+    if (next > maxCanAdd) _showOverDialog(); // warning فقط
   }
 
   void _decQty() {
@@ -64,7 +64,7 @@ class _ReScanScreenState extends State<ReScanScreen> {
     }
     setState(() {});
     final maxCanAdd = selectedLine!.remaining - selectedLine!.scanned;
-    if (val > maxCanAdd) _showOverDialog();
+    if (val > maxCanAdd) _showOverDialog(); // warning فقط
   }
 
   void _addQty() {
@@ -77,7 +77,7 @@ class _ReScanScreenState extends State<ReScanScreen> {
 
     final maxAllowed = selectedLine!.remaining;
     if (selectedLine!.scanned > maxAllowed) {
-      _showOverDialog();
+      _showOverDialog(); // warning فقط
     }
   }
 
@@ -108,7 +108,7 @@ class _ReScanScreenState extends State<ReScanScreen> {
         actions: [
           ElevatedButton(
             style: ElevatedButton.styleFrom(
-              backgroundColor: Colors.green,
+              backgroundColor: Colors.green, // نفس اللون بتاعك
               shape: const StadiumBorder(),
             ),
             onPressed: () => Navigator.pop(context),
@@ -139,39 +139,52 @@ class _ReScanScreenState extends State<ReScanScreen> {
       ),
       body: Column(
         children: [
+          // ===== جدول قابل للتمرير أفقياً ورأسياً (يحمي من overflow) =====
           Expanded(
             child: SingleChildScrollView(
               scrollDirection: Axis.vertical,
-              child: DataTable(
-                headingRowColor: MaterialStateProperty.all(const Color(0xFFEFEFF4)),
-                columns: const [
-                  DataColumn(label: Text('SKU', style: TextStyle(fontWeight: FontWeight.w700))),
-                  DataColumn(label: Text('SOQ',    style: TextStyle(fontWeight: FontWeight.w700))),
-                  DataColumn(label: Text('Sc',           style: TextStyle(fontWeight: FontWeight.w700))),
-                  DataColumn(label: Text('U/M',          style: TextStyle(fontWeight: FontWeight.w700))),
-                ],
-                rows: List.generate(lines.length, (i) {
-                  final line = lines[i];
-                  final selected = i == selectedIndex;
-                  return DataRow(
-                    selected: selected,
-                    color: MaterialStateProperty.resolveWith<Color?>(
-                          (states) => selected ? const Color(0xFFE0F7E9) : null,
-                    ),
-                    onSelectChanged: (_) => _selectRow(i),
-                    cells: [
-                      DataCell(Text(line.code)),
-                      DataCell(Text('${line.remaining}')),
-                      DataCell(Text('${line.scanned}')),
-                      DataCell(Text(line.unit)),
-                    ],
-                  );
-                }),
+              child: SingleChildScrollView(
+                scrollDirection: Axis.horizontal,
+                child: DataTable(
+                  columnSpacing: 16,
+                  headingRowColor: MaterialStateProperty.all(const Color(0xFFEFEFF4)),
+                  columns: const [
+                    DataColumn(label: Text('Product Code', style: TextStyle(fontWeight: FontWeight.w700))),
+                    DataColumn(label: Text('Remaining',    style: TextStyle(fontWeight: FontWeight.w700))),
+                    DataColumn(label: Text('Sc',           style: TextStyle(fontWeight: FontWeight.w700))),
+                    DataColumn(label: Text('U/M',          style: TextStyle(fontWeight: FontWeight.w700))),
+                  ],
+                  rows: List.generate(lines.length, (i) {
+                    final line = lines[i];
+                    final selected = i == selectedIndex;
+                    return DataRow(
+                      selected: selected,
+                      color: MaterialStateProperty.resolveWith<Color?>(
+                            (states) => selected ? const Color(0xFFE0F7E9) : null,
+                      ),
+                      onSelectChanged: (_) => _selectRow(i),
+                      cells: [
+                        DataCell(
+                          SizedBox(
+                            width: isTablet ? 220 : 120,
+                            child: Text(
+                              line.code,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                        ),
+                        DataCell(Text('${line.remaining}')),
+                        DataCell(Text('${line.scanned}')),
+                        DataCell(Text(line.unit)),
+                      ],
+                    );
+                  }),
+                ),
               ),
             ),
           ),
 
-          // اللوحة السفلية
+          // ===== اللوحة السفلية (Scroll أفقي لحماية overflow على شاشات صغيرة) =====
           Container(
             width: double.infinity,
             padding: EdgeInsets.symmetric(
@@ -185,17 +198,22 @@ class _ReScanScreenState extends State<ReScanScreen> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Wrap(
-                  spacing: 10,
-                  runSpacing: 10,
-                  crossAxisAlignment: WrapCrossAlignment.center,
-                  children: [
-                    _chipButton('Clr Line', onTap: _clearLine),
-                    _chipButton('Add', onTap: _addQty),
-                    const Text('Qty:', style: TextStyle(fontWeight: FontWeight.w600)),
-                    _qtyBox(isTablet: isTablet),
-                  ],
+                SingleChildScrollView(
+                  scrollDirection: Axis.horizontal,
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.center,
+                    children: [
+                      _chipButton('Clr Line', onTap: _clearLine),
+                      const SizedBox(width: 10),
+                      _chipButton('Add', onTap: _addQty),
+                      const SizedBox(width: 12),
+                      const Text('Qty:', style: TextStyle(fontWeight: FontWeight.w600)),
+                      const SizedBox(width: 8),
+                      _qtyBox(isTablet: isTablet),
+                    ],
+                  ),
                 ),
+
                 const SizedBox(height: 10),
                 Text(
                   selectedLine != null
@@ -244,16 +262,19 @@ class _ReScanScreenState extends State<ReScanScreen> {
   }
 
   Widget _chipButton(String label, {required VoidCallback onTap}) {
-    return ElevatedButton(
-      onPressed: selectedLine == null ? null : onTap,
-      style: ElevatedButton.styleFrom(
-        backgroundColor: const Color(0xFFF5F6F8),
-        foregroundColor: Colors.black87,
-        elevation: 0,
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+    return Padding(
+      padding: const EdgeInsets.only(right: 6.0),
+      child: ElevatedButton(
+        onPressed: selectedLine == null ? null : onTap,
+        style: ElevatedButton.styleFrom(
+          backgroundColor: const Color(0xFFF5F6F8),
+          foregroundColor: Colors.black87,
+          elevation: 0,
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+        ),
+        child: Text(label, style: const TextStyle(fontWeight: FontWeight.w700)),
       ),
-      child: Text(label, style: const TextStyle(fontWeight: FontWeight.w700)),
     );
   }
 
@@ -276,24 +297,27 @@ class _ReScanScreenState extends State<ReScanScreen> {
               child: Icon(Icons.remove, size: 20),
             ),
           ),
-          SizedBox(
-            width: tfWidth,
-            child: TextField(
-              controller: qtyCtrl,
-              textAlign: TextAlign.center,
-              keyboardType: TextInputType.number,
-              inputFormatters: [FilteringTextInputFormatter.digitsOnly],
-              onChanged: _onQtyChanged,
-              style: TextStyle(
-                fontWeight: FontWeight.w700,
-                fontSize: isTablet ? 18 : 16,
+          // Flexible حوالين SizedBox عشان المربع ما يعملش overflow
+          Flexible(
+            child: SizedBox(
+              width: tfWidth,
+              child: TextField(
+                controller: qtyCtrl,
+                textAlign: TextAlign.center,
+                keyboardType: TextInputType.number,
+                inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+                onChanged: _onQtyChanged,
+                style: TextStyle(
+                  fontWeight: FontWeight.w700,
+                  fontSize: isTablet ? 18 : 16,
+                ),
+                decoration: const InputDecoration(
+                  isDense: true,
+                  border: InputBorder.none,
+                  contentPadding: EdgeInsets.symmetric(vertical: 8),
+                ),
+                enabled: selectedLine != null,
               ),
-              decoration: const InputDecoration(
-                isDense: true,
-                border: InputBorder.none,
-                contentPadding: EdgeInsets.symmetric(vertical: 8),
-              ),
-              enabled: selectedLine != null,
             ),
           ),
           InkWell(
