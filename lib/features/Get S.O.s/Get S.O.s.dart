@@ -63,7 +63,43 @@ class _GetSOSScreenState extends State<GetSOSScreen> {
           ? const Center(child: CircularProgressIndicator())
           : Column(
         children: [
+          /// ✅ Header Row
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+            color: Colors.blue.shade50,
+            child: Row(
+              children: [
+                Expanded(
+                  flex: 2,
+                  child: Text(
+                    "Sales Order",
+                    style: TextStyle(
+                      fontSize: isTablet ? 20 : 16,
+                      fontWeight: FontWeight.bold,
+                      color: Colors.black87,
+                    ),
+                  ),
+                ),
+                Expanded(
+                  flex: 1,
+                  child: Text(
+                    "Status",
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      fontSize: isTablet ? 20 : 16,
+                      fontWeight: FontWeight.bold,
+                      color: Colors.black87,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+
+          /// ✅ List
           Expanded(child: _buildListView()),
+
+          /// ✅ Button
           _buildScanButton(isTablet),
           const SizedBox(height: 50),
         ],
