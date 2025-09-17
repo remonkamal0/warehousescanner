@@ -28,7 +28,7 @@ class RoutesManagers {
     RoutesName.kSendSOSScreen: (_) => const SendSOSScreen(),
     RoutesName.kReScanSOSScreen: (_) => const ReScanSOSScreen(),
     RoutesName.kReScanScreen: (_) => const ReScanScreen(soNumber: '',),
-    RoutesName.kScanScreen: (_) =>  ScanScreen(soNumber: 'soNumber',),
+    RoutesName.kScanScreen: (_) =>  ScanScreen(soNumber: 'soNumber', txnID: '',),
 
 
   };

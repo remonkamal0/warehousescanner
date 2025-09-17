@@ -4,6 +4,11 @@ class SalesOrder {
   final String customerName;
   final String soDate;
   final String soStatus;
+  final double amount;
+  final int itemsCount;
+  final String soGUID;
+  final String txnNumber;
+  final String txnID; // ده المهم علشان تدخل بيه على صفحة المنتجات
 
   const SalesOrder({
     required this.soID,
@@ -11,6 +16,11 @@ class SalesOrder {
     required this.customerName,
     required this.soDate,
     required this.soStatus,
+    required this.amount,
+    required this.itemsCount,
+    required this.soGUID,
+    required this.txnNumber,
+    required this.txnID,
   });
 
   factory SalesOrder.fromJson(Map<String, dynamic> json) {
@@ -20,6 +30,11 @@ class SalesOrder {
       customerName: json['customerName'],
       soDate: json['soDate'],
       soStatus: json['soStatus'],
+      amount: (json['amount'] as num).toDouble(),
+      itemsCount: json['itemsCount'],
+      soGUID: json['soGUID'],
+      txnNumber: json['txnNumber'],
+      txnID: json['txnID'],
     );
   }
 }

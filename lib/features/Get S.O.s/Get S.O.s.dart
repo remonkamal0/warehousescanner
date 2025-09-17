@@ -18,6 +18,7 @@ class _GetSOSScreenState extends State<GetSOSScreen> {
   List<SalesOrder> soList = [];
   bool isLoading = true;
 
+
   /// ✅ API Call
   Future<void> fetchSalesOrders() async {
     const url = "http://irs.evioteg.com:8080/api/salesorder";
@@ -178,6 +179,7 @@ class _GetSOSScreenState extends State<GetSOSScreen> {
         MaterialPageRoute(
           builder: (_) => ScanScreen(
             soNumber: soList[selectedIndex!].soNumber,
+            txnID: soList[selectedIndex!].txnID, // ✅ أضف txnID هنا
           ),
         ),
       );
