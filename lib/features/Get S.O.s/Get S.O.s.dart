@@ -1,6 +1,10 @@
+import 'dart:convert';
 import 'package:flutter/material.dart';
+import 'package:http/http.dart' as http;
+import 'package:warehousescanner/features/Get%20S.O.s/widgets/sales_order_card.dart';
 
 import '../ScanScreen/ScanScreen.dart';
+import 'models/sales_order.dart';
 
 class GetSOSScreen extends StatefulWidget {
   const GetSOSScreen({super.key});
@@ -10,158 +14,137 @@ class GetSOSScreen extends StatefulWidget {
 }
 
 class _GetSOSScreenState extends State<GetSOSScreen> {
-  int? selectedIndex; // نخزن ال index بتاع الـ SO المختار
+  int? selectedIndex;
+  List<SalesOrder> soList = [];
+  bool isLoading = true;
 
-  final List<String> soList = [
-    "S.O.1001",
-    "S.O.1002",
-    "S.O.1003",
-    "S.O.1004",
-    "S.O.1005",
-    "S.O.1006",
-  ];
+  /// ✅ API Call
+  Future<void> fetchSalesOrders() async {
+    const url = "http://irs.evioteg.com:8080/api/salesorder";
+
+    try {
+      final response = await http.get(Uri.parse(url));
+
+      if (response.statusCode == 200) {
+        final List<dynamic> data = json.decode(response.body);
+        setState(() {
+          soList = data.map((e) => SalesOrder.fromJson(e)).toList();
+          isLoading = false;
+        });
+      } else {
+        throw Exception("Failed to load sales orders");
+      }
+    } catch (e) {
+      setState(() => isLoading = false);
+      _showSnackBar("Error: $e");
+    }
+  }
+
+  void _showSnackBar(String message) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(message)),
+    );
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    fetchSalesOrders();
+  }
 
   @override
   Widget build(BuildContext context) {
-    final size = MediaQuery.of(context).size;
-    final isTablet = size.width > 600;
+    final isTablet = MediaQuery.of(context).size.width > 600;
 
     return Scaffold(
-      appBar: AppBar(
-        backgroundColor: Colors.blue,
-        centerTitle: true,
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back, color: Colors.white),
-          onPressed: () => Navigator.pop(context),
-        ),
-        title: Text(
-          "Get S.O.s",
-          style: TextStyle(
-            color: Colors.white,
-            fontSize: isTablet ? 24 : 20,
-            fontWeight: FontWeight.bold,
-          ),
-        ),
-      ),
-      body: Column(
+      backgroundColor: Colors.white,
+      appBar: _buildAppBar(isTablet),
+      body: isLoading
+          ? const Center(child: CircularProgressIndicator())
+          : Column(
         children: [
-          // ====== القائمة ======
-          Expanded(
-            child: ListView.builder(
-              itemCount: soList.length,
-              padding: const EdgeInsets.all(10),
-              itemBuilder: (context, index) {
-                return Card(
-                  elevation: 0,
-                  margin: const EdgeInsets.symmetric(vertical: 6),
-                  child: Row(
-                    crossAxisAlignment: CrossAxisAlignment.center,
-                    children: [
-                      Radio<int>(
-                        value: index,
-                        groupValue: selectedIndex,
-                        onChanged: (val) {
-                          setState(() {
-                            selectedIndex = val;
-                          });
-                        },
-                      ),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              soList[index],
-                              style: const TextStyle(
-                                  fontWeight: FontWeight.bold, fontSize: 16),
-                            ),
-                            const SizedBox(height: 2),
-                            const Text(
-                              "Ahmed Gamal",
-                              style: TextStyle(
-                                  fontSize: 14, color: Colors.black54),
-                            ),
-                          ],
-                        ),
-                      ),
-                      Column(
-                        crossAxisAlignment: CrossAxisAlignment.end,
-                        children: [
-                          Container(
-                            padding: const EdgeInsets.symmetric(
-                                horizontal: 12, vertical: 6),
-                            decoration: BoxDecoration(
-                              color: Colors.blue,
-                              borderRadius: BorderRadius.circular(8),
-                            ),
-                            child: const Text(
-                              "Open",
-                              style: TextStyle(
-                                  color: Colors.white,
-                                  fontWeight: FontWeight.bold,
-                                  fontSize: 13),
-                            ),
-                          ),
-                          const SizedBox(height: 4),
-                          const Text(
-                            "Jan 15 ,2025",
-                            style: TextStyle(
-                                fontSize: 12, color: Colors.black54),
-                          ),
-                        ],
-                      ),
-                    ],
-                  ),
-                );
-              },
-            ),
-          ),
-
-          // ====== زر Scan ======
-          Padding(
-            padding: const EdgeInsets.all(16.0),
-            child: SizedBox(
-              width: double.infinity,
-              height: isTablet ? 65 : 55,
-              child: ElevatedButton(
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.blue,
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  elevation: 4,
-                ),
-                onPressed: () {
-                  if (selectedIndex == null) {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(
-                          content: Text("Please select an S.O first")),
-                    );
-                  } else {
-                    // ✅ التنقل لصفحة Scan مع تمرير الـ SO
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (_) => ScanScreen(
-                          soNumber: soList[selectedIndex!],
-                        ),
-                      ),
-                    );
-                  }
-                },
-                child: Text(
-                  "Get",
-                  style: TextStyle(
-                    fontSize: isTablet ? 22 : 18,
-                    fontWeight: FontWeight.bold,
-                    color: Colors.white,
-                  ),
-                ),
-              ),
-            ),
-          ),
+          Expanded(child: _buildListView()),
+          _buildScanButton(isTablet),
+          const SizedBox(height: 50),
         ],
       ),
     );
+  }
+
+  AppBar _buildAppBar(bool isTablet) {
+    return AppBar(
+      backgroundColor: Colors.blue,
+      centerTitle: true,
+      leading: IconButton(
+        icon: const Icon(Icons.arrow_back, color: Colors.white),
+        onPressed: () => Navigator.pop(context),
+      ),
+      title: Text(
+        "Get S.O.s",
+        style: TextStyle(
+          color: Colors.white,
+          fontSize: isTablet ? 24 : 20,
+          fontWeight: FontWeight.bold,
+        ),
+      ),
+    );
+  }
+
+  Widget _buildListView() {
+    return ListView.builder(
+      itemCount: soList.length,
+      padding: const EdgeInsets.all(10),
+      itemBuilder: (context, index) {
+        final so = soList[index];
+        return SalesOrderCard(
+          so: so,
+          isSelected: selectedIndex == index,
+          onTap: () => setState(() => selectedIndex = index),
+        );
+      },
+    );
+  }
+
+  Widget _buildScanButton(bool isTablet) {
+    return Padding(
+      padding: const EdgeInsets.all(16.0),
+      child: SizedBox(
+        width: double.infinity,
+        height: isTablet ? 65 : 55,
+        child: ElevatedButton(
+          style: ElevatedButton.styleFrom(
+            backgroundColor: Colors.blue,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(12),
+            ),
+            elevation: 4,
+          ),
+          onPressed: _onScanPressed,
+          child: Text(
+            "Get",
+            style: TextStyle(
+              fontSize: isTablet ? 22 : 18,
+              fontWeight: FontWeight.bold,
+              color: Colors.white,
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  void _onScanPressed() {
+    if (selectedIndex == null) {
+      _showSnackBar("Please select an S.O first");
+    } else {
+      Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (_) => ScanScreen(
+            soNumber: soList[selectedIndex!].soNumber,
+          ),
+        ),
+      );
+    }
   }
 }
