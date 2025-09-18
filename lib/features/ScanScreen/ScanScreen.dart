@@ -21,9 +21,11 @@ class _ScanScreenState extends State<ScanScreen> {
   List<_SoLine> lines = [];
   bool isLoading = true;
   int? selectedIndex;
-  _SoLine? get selectedLine => (selectedIndex != null) ? lines[selectedIndex!] : null;
+  _SoLine? get selectedLine =>
+      (selectedIndex != null) ? lines[selectedIndex!] : null;
 
   final TextEditingController qtyCtrl = TextEditingController(text: '0');
+  final TextEditingController barcodeCtrl = TextEditingController();
   int get qty => int.tryParse(qtyCtrl.text) ?? 0;
   set qty(int v) => qtyCtrl.text = v.toString();
 
@@ -31,10 +33,20 @@ class _ScanScreenState extends State<ScanScreen> {
   void initState() {
     super.initState();
     fetchLines();
+
+    // Listener للباركود
+    barcodeCtrl.addListener(() {
+      final barcode = barcodeCtrl.text.trim();
+      if (barcode.isNotEmpty) {
+        _applyScannedBarcode(barcode);
+        barcodeCtrl.clear();
+      }
+    });
   }
 
   Future<void> fetchLines() async {
-    final url = "http://irs.evioteg.com:8080/api/SalesOrderLine/${widget.txnID}";
+    final url =
+        "http://irs.evioteg.com:8080/api/SalesOrderLine/${widget.txnID}";
     try {
       final response = await http.get(Uri.parse(url));
       if (response.statusCode == 200) {
@@ -48,7 +60,8 @@ class _ScanScreenState extends State<ScanScreen> {
       }
     } catch (e) {
       setState(() => isLoading = false);
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Error: $e")));
+      ScaffoldMessenger.of(context)
+          .showSnackBar(SnackBar(content: Text("Error: $e")));
     }
   }
 
@@ -64,7 +77,7 @@ class _ScanScreenState extends State<ScanScreen> {
     final next = qty + 1;
     qty = next;
     setState(() {});
-    final maxCanAdd = selectedLine!.remaining - selectedLine!.scanned;
+    final maxCanAdd = selectedLine!.remaining - selectedLine!.tempScanned;
     if (next > maxCanAdd) _showOverDialog();
   }
 
@@ -84,59 +97,45 @@ class _ScanScreenState extends State<ScanScreen> {
       return;
     }
     setState(() {});
-    final maxCanAdd = selectedLine!.remaining - selectedLine!.scanned;
+    final maxCanAdd = selectedLine!.remaining - selectedLine!.tempScanned;
     if (val > maxCanAdd) _showOverDialog();
   }
 
-  void _addQty() async {
+  void _addQty() {
     if (selectedLine == null || qty == 0) return;
-
-    final updatedScanned = selectedLine!.scanned + qty;
-
-    final url = "http://irs.evioteg.com:8080/api/SalesOrderLine/${selectedLine!.id}";
-    try {
-      final response = await http.put(
-        Uri.parse(url),
-        headers: {"Content-Type": "application/json"},
-        body: json.encode({"scanned": updatedScanned}),
-      );
-      if (response.statusCode == 200) {
-        setState(() {
-          selectedLine!.scanned = updatedScanned;
-          qty = 0;
-        });
-      } else {
-        throw Exception("Failed to update line");
-      }
-    } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Error: $e")));
-    }
+    setState(() {
+      selectedLine!.tempScanned += qty;
+      qty = 0;
+    });
   }
 
-  void _clearLine() async {
+  void _clearLine() {
     if (selectedLine == null) return;
-
-    final url = "http://irs.evioteg.com:8080/api/SalesOrderLine/${selectedLine!.id}";
-    try {
-      final response = await http.put(
-        Uri.parse(url),
-        headers: {"Content-Type": "application/json"},
-        body: json.encode({"scanned": 0}),
-      );
-      if (response.statusCode == 200) {
-        setState(() {
-          selectedLine!.scanned = 0;
-          qty = 0;
-        });
-      } else {
-        throw Exception("Failed to clear line");
-      }
-    } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Error: $e")));
-    }
+    setState(() {
+      selectedLine!.tempScanned = 0;
+      qty = 0;
+    });
   }
 
-  void _done() {
+  void _done() async {
+    // تحديث الـ scanned بالداتا بيز لكل العناصر
+    for (var line in lines) {
+      if (line.tempScanned > 0) {
+        final url =
+            "http://irs.evioteg.com:8080/api/SalesOrderLine/${line.id}";
+        try {
+          await http.put(
+            Uri.parse(url),
+            headers: {"Content-Type": "application/json"},
+            body: json.encode({"scanned": line.tempScanned}),
+          );
+          line.scanned = line.tempScanned; // تحديث محلي
+        } catch (e) {
+          ScaffoldMessenger.of(context)
+              .showSnackBar(SnackBar(content: Text("Error: $e")));
+        }
+      }
+    }
     Navigator.pop(context);
   }
 
@@ -159,11 +158,28 @@ class _ScanScreenState extends State<ScanScreen> {
               shape: const StadiumBorder(),
             ),
             onPressed: () => Navigator.pop(context),
-            child: const Text('OK',style: TextStyle(color: Colors.white),),
+            child: const Text(
+              'OK',
+              style: TextStyle(color: Colors.white),
+            ),
           )
         ],
       ),
     );
+  }
+
+  void _applyScannedBarcode(String barcode) {
+    final index = lines.indexWhere((line) => line.barcodes.contains(barcode));
+    if (index != -1) {
+      setState(() {
+        selectedIndex = index;
+        qty = 1;
+      });
+      _addQty();
+    } else {
+      ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Barcode not found')));
+    }
   }
 
   @override
@@ -182,109 +198,152 @@ class _ScanScreenState extends State<ScanScreen> {
         ),
         title: Text(
           'Scan - ${widget.soNumber}',
-          style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w800),
+          style: const TextStyle(
+              color: Colors.white, fontWeight: FontWeight.w800),
         ),
       ),
-      body: isLoading
-          ? const Center(child: CircularProgressIndicator())
-          : Column(
+      body: Stack(
         children: [
-          Expanded(
-            child: SingleChildScrollView(
-              scrollDirection: Axis.vertical,
-              child: DataTable(
-                headingRowColor: MaterialStateProperty.all(const Color(0xFFEFEFF4)),
-                columns: const [
-                  DataColumn(label: Text('SKU', style: TextStyle(fontWeight: FontWeight.w700))),
-                  DataColumn(label: Text('SOQ', style: TextStyle(fontWeight: FontWeight.w700))),
-                  DataColumn(label: Text('Sc', style: TextStyle(fontWeight: FontWeight.w700))),
-                  DataColumn(label: Text('U/M', style: TextStyle(fontWeight: FontWeight.w700))),
-                ],
-                rows: List.generate(lines.length, (i) {
-                  final line = lines[i];
-                  final selected = i == selectedIndex;
-                  return DataRow(
-                    selected: selected,
-                    color: MaterialStateProperty.resolveWith<Color?>(
-                          (states) => selected ? const Color(0xFFE0ECFF) : null,
-                    ),
-                    onSelectChanged: (_) => _selectRow(i),
-                    cells: [
-                      DataCell(Text(line.code)),
-                      DataCell(Text('${line.remaining}')),
-                      DataCell(Text('${line.scanned}')),
-                      DataCell(Text(line.unit)),
+          isLoading
+              ? const Center(child: CircularProgressIndicator())
+              : Column(
+            children: [
+              Expanded(
+                child: SingleChildScrollView(
+                  scrollDirection: Axis.vertical,
+                  child: DataTable(
+                    headingRowColor: MaterialStateProperty.all(
+                        const Color(0xFFEFEFF4)),
+                    columns: const [
+                      DataColumn(
+                          label: Text('SKU',
+                              style:
+                              TextStyle(fontWeight: FontWeight.w700))),
+                      DataColumn(
+                          label: Text('SOQ',
+                              style:
+                              TextStyle(fontWeight: FontWeight.w700))),
+                      DataColumn(
+                          label: Text('Sc',
+                              style:
+                              TextStyle(fontWeight: FontWeight.w700))),
+                      DataColumn(
+                          label: Text('U/M',
+                              style:
+                              TextStyle(fontWeight: FontWeight.w700))),
                     ],
-                  );
-                }),
+                    rows: List.generate(lines.length, (i) {
+                      final line = lines[i];
+                      final selected = i == selectedIndex;
+                      return DataRow(
+                        selected: selected,
+                        color: MaterialStateProperty.resolveWith<Color?>(
+                                (states) =>
+                            selected ? const Color(0xFFE0ECFF) : null),
+                        onSelectChanged: (_) => _selectRow(i),
+                        cells: [
+                          DataCell(Text(line.code)),
+                          DataCell(Text('${line.remaining}')),
+                          DataCell(Text('${line.tempScanned}')),
+                          DataCell(Text(line.unit)),
+                        ],
+                      );
+                    }),
+                  ),
+                ),
               ),
-            ),
+              Container(
+                width: double.infinity,
+                padding: EdgeInsets.symmetric(
+                  horizontal: isTablet ? size.width * 0.06 : 16,
+                  vertical: 14,
+                ),
+                decoration: const BoxDecoration(
+                  color: Colors.white,
+                  border:
+                  Border(top: BorderSide(color: Color(0xFFE6E6E6))),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Wrap(
+                      spacing: 10,
+                      runSpacing: 10,
+                      crossAxisAlignment: WrapCrossAlignment.center,
+                      children: [
+                        _chipButton('Clr Line', onTap: _clearLine),
+                        _chipButton('Add', onTap: _addQty),
+                        const Text('Qty:',
+                            style: TextStyle(fontWeight: FontWeight.w600)),
+                        _qtyBox(isTablet: isTablet),
+                      ],
+                    ),
+                    const SizedBox(height: 10),
+                    Text(
+                      selectedLine != null
+                          ? '${selectedLine!.desc}'
+                          : 'Select a row from the table…',
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(fontWeight: FontWeight.w700),
+                    ),
+                    const SizedBox(height: 12),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: OutlinedButton(
+                            onPressed: () => Navigator.pop(context),
+                            style: OutlinedButton.styleFrom(
+                              padding: const EdgeInsets.symmetric(
+                                  vertical: 14),
+                              shape: RoundedRectangleBorder(
+                                  borderRadius:
+                                  BorderRadius.circular(10)),
+                            ),
+                            child: const Text('Cancel'),
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: ElevatedButton(
+                            onPressed: _done,
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: const Color(0xFF2F76D2),
+                              padding: const EdgeInsets.symmetric(
+                                  vertical: 14),
+                              shape: RoundedRectangleBorder(
+                                  borderRadius:
+                                  BorderRadius.circular(10)),
+                            ),
+                            child: const Text(
+                              'Done',
+                              style: TextStyle(
+                                  color: Colors.white,
+                                  fontWeight: FontWeight.w700),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 50)
+                  ],
+                ),
+              ),
+            ],
           ),
-          Container(
-            width: double.infinity,
-            padding: EdgeInsets.symmetric(
-              horizontal: isTablet ? size.width * 0.06 : 16,
-              vertical: 14,
-            ),
-            decoration: const BoxDecoration(
-              color: Colors.white,
-              border: Border(top: BorderSide(color: Color(0xFFE6E6E6))),
-            ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Wrap(
-                  spacing: 10,
-                  runSpacing: 10,
-                  crossAxisAlignment: WrapCrossAlignment.center,
-                  children: [
-                    _chipButton('Clr Line', onTap: _clearLine),
-                    _chipButton('Add', onTap: _addQty),
-                    const Text('Qty:', style: TextStyle(fontWeight: FontWeight.w600)),
-                    _qtyBox(isTablet: isTablet),
-                  ],
-                ),
-                const SizedBox(height: 10),
-                Text(
-                  selectedLine != null
-                      ? '${selectedLine!.desc}'
-                      : 'Select a row from the table…',
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(fontWeight: FontWeight.w700),
-                ),
-                const SizedBox(height: 12),
-                Row(
-                  children: [
-                    Expanded(
-                      child: OutlinedButton(
-                        onPressed: () => Navigator.pop(context),
-                        style: OutlinedButton.styleFrom(
-                          padding: const EdgeInsets.symmetric(vertical: 14),
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                        ),
-                        child: const Text('Cancel'),
-                      ),
-                    ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: ElevatedButton(
-                        onPressed: _done,
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: const Color(0xFF2F76D2),
-                          padding: const EdgeInsets.symmetric(vertical: 14),
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                        ),
-                        child: const Text(
-                          'Done',
-                          style: TextStyle(color: Colors.white, fontWeight: FontWeight.w700),
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-                SizedBox(height: 50,)
-              ],
+          // TextField مخفي لاستقبال الباركود
+          Positioned(
+            left: 0,
+            top: 0,
+            child: SizedBox(
+              width: 0,
+              height: 0,
+              child: TextField(
+                controller: barcodeCtrl,
+                autofocus: true,
+                enableInteractiveSelection: false,
+                showCursor: false,
+              ),
             ),
           ),
         ],
@@ -332,7 +391,8 @@ class _ScanScreenState extends State<ScanScreen> {
               keyboardType: TextInputType.number,
               inputFormatters: [FilteringTextInputFormatter.digitsOnly],
               onChanged: _onQtyChanged,
-              style: TextStyle(fontWeight: FontWeight.w700, fontSize: isTablet ? 18 : 16),
+              style: TextStyle(
+                  fontWeight: FontWeight.w700, fontSize: isTablet ? 18 : 16),
               decoration: const InputDecoration(
                 isDense: true,
                 border: InputBorder.none,
@@ -361,6 +421,8 @@ class _SoLine {
   final String unit;
   final int remaining;
   int scanned;
+  int tempScanned;
+  List<String> barcodes;
 
   _SoLine({
     required this.id,
@@ -369,16 +431,21 @@ class _SoLine {
     required this.remaining,
     required this.scanned,
     required this.unit,
-  });
+    int? tempScanned,
+    List<String>? barcodes,
+  })  : tempScanned = tempScanned ?? 0,
+        barcodes = barcodes ?? [];
 
   factory _SoLine.fromJson(Map<String, dynamic> json) {
     return _SoLine(
-      id: json['lineID'].toString(),
-      code: json['item'].toString(),
-      desc: json['description'].toString(),
+      id: json['lineID']?.toString() ?? '',
+      code: json['item']?.toString() ?? '',
+      desc: json['description']?.toString() ?? '',
       remaining: (json['orderdQty'] ?? 0).toInt(),
-      scanned: 0, // rescan
+      scanned: 0,
       unit: json['unit']?.toString() ?? 'PCS',
+      tempScanned: 0,
+      barcodes: List<String>.from(json['barcodes'] ?? []),
     );
   }
 }
