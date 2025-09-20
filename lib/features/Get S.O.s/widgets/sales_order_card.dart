@@ -19,7 +19,7 @@ class SalesOrderCard extends StatelessWidget {
   Widget build(BuildContext context) {
     return Card(
       elevation: isSelected ? 4 : 1,
-      color: isSelected ? primaryColor.withOpacity(0.08) : Colors.white,
+      color: isSelected ? primaryColor.withOpacity(0.30) : Colors.white,
       margin: const EdgeInsets.symmetric(vertical: 6),
       child: InkWell(
         onTap: onTap,

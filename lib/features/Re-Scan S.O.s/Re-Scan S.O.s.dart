@@ -5,7 +5,6 @@ import 'package:warehousescanner/features/Get%20S.O.s/widgets/sales_order_card.d
 
 import '../Get S.O.s/models/sales_order.dart';
 import '../ReScanScreen/ReScanScreen.dart';
-import '../ScanScreen/ScanScreen.dart';
 
 class ReScanSOSScreen extends StatefulWidget {
   const ReScanSOSScreen({super.key});
@@ -18,7 +17,6 @@ class _ReScanSOSScreenState extends State<ReScanSOSScreen> {
   int? selectedIndex;
   List<SalesOrder> soList = [];
   bool isLoading = true;
-
 
   /// ✅ API Call
   Future<void> fetchSalesOrders() async {
@@ -63,11 +61,23 @@ class _ReScanSOSScreenState extends State<ReScanSOSScreen> {
       appBar: _buildAppBar(isTablet),
       body: isLoading
           ? const Center(child: CircularProgressIndicator())
+          : soList.isEmpty
+          ? const Center(
+        child: Text(
+          "No Sales Orders found",
+          style: TextStyle(
+            fontSize: 18,
+            fontWeight: FontWeight.bold,
+            color: Colors.grey,
+          ),
+        ),
+      )
           : Column(
         children: [
           /// ✅ Header Row
           Container(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+            padding: const EdgeInsets.symmetric(
+                horizontal: 16, vertical: 12),
             color: Colors.blue.shade50,
             child: Row(
               children: [
@@ -111,7 +121,7 @@ class _ReScanSOSScreenState extends State<ReScanSOSScreen> {
 
   AppBar _buildAppBar(bool isTablet) {
     return AppBar(
-      backgroundColor: Color(0xFF27AE60),
+      backgroundColor: const Color(0xFF27AE60),
       centerTitle: true,
       leading: IconButton(
         icon: const Icon(Icons.arrow_back, color: Colors.white),
@@ -151,7 +161,7 @@ class _ReScanSOSScreenState extends State<ReScanSOSScreen> {
         height: isTablet ? 65 : 55,
         child: ElevatedButton(
           style: ElevatedButton.styleFrom(
-            backgroundColor: Color(0xFF27AE60),
+            backgroundColor: const Color(0xFF27AE60),
             shape: RoundedRectangleBorder(
               borderRadius: BorderRadius.circular(12),
             ),

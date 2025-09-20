@@ -18,7 +18,6 @@ class _GetSOSScreenState extends State<GetSOSScreen> {
   List<SalesOrder> soList = [];
   bool isLoading = true;
 
-
   /// ✅ API Call
   Future<void> fetchSalesOrders() async {
     const url = "http://irs.evioteg.com:8080/api/SalesOrder/GetSalesOrderFSC";
@@ -62,11 +61,23 @@ class _GetSOSScreenState extends State<GetSOSScreen> {
       appBar: _buildAppBar(isTablet),
       body: isLoading
           ? const Center(child: CircularProgressIndicator())
+          : soList.isEmpty
+          ? const Center(
+        child: Text(
+          "No Sales Orders found",
+          style: TextStyle(
+            fontSize: 18,
+            fontWeight: FontWeight.bold,
+            color: Colors.grey,
+          ),
+        ),
+      )
           : Column(
         children: [
           /// ✅ Header Row
           Container(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+            padding: const EdgeInsets.symmetric(
+                horizontal: 16, vertical: 12),
             color: Colors.blue.shade50,
             child: Row(
               children: [
