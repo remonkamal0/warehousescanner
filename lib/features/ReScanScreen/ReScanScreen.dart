@@ -123,7 +123,7 @@ class _ReScanScreenState extends State<ReScanScreen> {
 
   Future<void> _done() async {
     final url =
-        "http://irs.evioteg.com:8080/api/SalesOrderLine/UpdateOrderDetailsSSC//${widget.txnID}";
+        "http://irs.evioteg.com:8080/api/SalesOrderLine/UpdateOrderDetailsSSC/${widget.txnID}";
 
     try {
       // نجهز الـ payload بالشكل المطلوب:
