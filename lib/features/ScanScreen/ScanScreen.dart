@@ -21,11 +21,13 @@ class _ScanScreenState extends State<ScanScreen> {
   List<_SoLine> lines = [];
   bool isLoading = true;
   int? selectedIndex;
+
   _SoLine? get selectedLine =>
       (selectedIndex != null) ? lines[selectedIndex!] : null;
 
   final TextEditingController qtyCtrl = TextEditingController(text: '0');
   final TextEditingController barcodeCtrl = TextEditingController();
+
   int get qty => int.tryParse(qtyCtrl.text) ?? 0;
   set qty(int v) => qtyCtrl.text = v.toString();
 
@@ -46,7 +48,7 @@ class _ScanScreenState extends State<ScanScreen> {
 
   Future<void> fetchLines() async {
     final url =
-        "http://irs.evioteg.com:8080/api/SalesOrderLine/${widget.txnID}";
+        "http://irs.evioteg.com:8080/api/SalesOrderLine/GetOrderLinesWithBarcodesFSC/${widget.txnID}";
     try {
       final response = await http.get(Uri.parse(url));
       if (response.statusCode == 200) {
@@ -77,8 +79,9 @@ class _ScanScreenState extends State<ScanScreen> {
     final next = qty + 1;
     qty = next;
     setState(() {});
-    final maxCanAdd = selectedLine!.remaining - selectedLine!.tempScanned;
-    if (next > maxCanAdd) _showOverDialog();
+    // تحذير لو الإجمالي (قديم + جديد) عدى المطلوب
+    final totalIfNext = selectedLine!.scanned + next;
+    if (totalIfNext > selectedLine!.orderedQty) _showOverDialog();
   }
 
   void _decQty() {
@@ -97,8 +100,9 @@ class _ScanScreenState extends State<ScanScreen> {
       return;
     }
     setState(() {});
-    final maxCanAdd = selectedLine!.remaining - selectedLine!.tempScanned;
-    if (val > maxCanAdd) _showOverDialog();
+    // تحذير لو الإجمالي (قديم + جديد) عدى المطلوب
+    final totalIfVal = selectedLine!.scanned + val;
+    if (totalIfVal > selectedLine!.orderedQty) _showOverDialog();
   }
 
   void _addQty() {
@@ -117,26 +121,44 @@ class _ScanScreenState extends State<ScanScreen> {
     });
   }
 
-  void _done() async {
-    // تحديث الـ scanned بالداتا بيز لكل العناصر
-    for (var line in lines) {
-      if (line.tempScanned > 0) {
-        final url =
-            "http://irs.evioteg.com:8080/api/SalesOrderLine/${line.id}";
-        try {
-          await http.put(
-            Uri.parse(url),
-            headers: {"Content-Type": "application/json"},
-            body: json.encode({"scanned": line.tempScanned}),
+  Future<void> _done() async {
+    final url =
+        "http://irs.evioteg.com:8080/api/SalesOrderLine/UpdateOrderDetailsFSC/${widget.txnID}";
+
+    try {
+      // نجهز الـ payload بالشكل المطلوب:
+      // itemCode = code
+      // quantity = scanned (قديم) + tempScanned (جديد)
+      final payload = lines
+          .map((l) => {
+        "itemCode": l.code,
+        "quantity": l.scanned + l.tempScanned,
+      })
+          .toList();
+
+      final response = await http.put(
+        Uri.parse(url),
+        headers: {"Content-Type": "application/json"},
+        body: json.encode(payload),
+      );
+
+      if (response.statusCode == 200) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text("تم إرسال البيانات بنجاح ✅")),
           );
-          line.scanned = line.tempScanned; // تحديث محلي
-        } catch (e) {
-          ScaffoldMessenger.of(context)
-              .showSnackBar(SnackBar(content: Text("Error: $e")));
+          Navigator.pop(context, true);
         }
+      } else {
+        throw Exception("فشل الإرسال (${response.statusCode}): ${response.body}");
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text("Error: $e")),
+        );
       }
     }
-    Navigator.pop(context);
   }
 
   Future<void> _showOverDialog() {
@@ -175,7 +197,11 @@ class _ScanScreenState extends State<ScanScreen> {
         selectedIndex = index;
         qty = 1;
       });
-      _addQty();
+      _addQty(); // هيزود tempScanned +1 وهنظهر تحذير لو عدى المطلوب
+      final line = lines[index];
+      if (line.scanned + line.tempScanned > line.orderedQty) {
+        _showOverDialog();
+      }
     } else {
       ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('Barcode not found')));
@@ -212,8 +238,8 @@ class _ScanScreenState extends State<ScanScreen> {
                 child: SingleChildScrollView(
                   scrollDirection: Axis.vertical,
                   child: DataTable(
-                    headingRowColor: MaterialStateProperty.all(
-                        const Color(0xFFEFEFF4)),
+                    headingRowColor:
+                    MaterialStateProperty.all(const Color(0xFFEFEFF4)),
                     columns: const [
                       DataColumn(
                           label: Text('SKU',
@@ -243,8 +269,11 @@ class _ScanScreenState extends State<ScanScreen> {
                         onSelectChanged: (_) => _selectRow(i),
                         cells: [
                           DataCell(Text(line.code)),
-                          DataCell(Text('${line.remaining}')),
-                          DataCell(Text('${line.tempScanned}')),
+                          DataCell(Text('${line.orderedQty}')),
+                          DataCell(
+                            // المعروض هنا ممكن يبقى الإجمالي أو المؤقت — حسب ما تحب
+                            Text('${line.scanned + line.tempScanned}'),
+                          ),
                           DataCell(Text(line.unit)),
                         ],
                       );
@@ -260,8 +289,8 @@ class _ScanScreenState extends State<ScanScreen> {
                 ),
                 decoration: const BoxDecoration(
                   color: Colors.white,
-                  border:
-                  Border(top: BorderSide(color: Color(0xFFE6E6E6))),
+                  border: Border(
+                      top: BorderSide(color: Color(0xFFE6E6E6))),
                 ),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -274,7 +303,8 @@ class _ScanScreenState extends State<ScanScreen> {
                         _chipButton('Clr Line', onTap: _clearLine),
                         _chipButton('Add', onTap: _addQty),
                         const Text('Qty:',
-                            style: TextStyle(fontWeight: FontWeight.w600)),
+                            style:
+                            TextStyle(fontWeight: FontWeight.w600)),
                         _qtyBox(isTablet: isTablet),
                       ],
                     ),
@@ -294,8 +324,8 @@ class _ScanScreenState extends State<ScanScreen> {
                           child: OutlinedButton(
                             onPressed: () => Navigator.pop(context),
                             style: OutlinedButton.styleFrom(
-                              padding: const EdgeInsets.symmetric(
-                                  vertical: 14),
+                              padding:
+                              const EdgeInsets.symmetric(vertical: 14),
                               shape: RoundedRectangleBorder(
                                   borderRadius:
                                   BorderRadius.circular(10)),
@@ -309,8 +339,8 @@ class _ScanScreenState extends State<ScanScreen> {
                             onPressed: _done,
                             style: ElevatedButton.styleFrom(
                               backgroundColor: const Color(0xFF2F76D2),
-                              padding: const EdgeInsets.symmetric(
-                                  vertical: 14),
+                              padding:
+                              const EdgeInsets.symmetric(vertical: 14),
                               shape: RoundedRectangleBorder(
                                   borderRadius:
                                   BorderRadius.circular(10)),
@@ -385,14 +415,16 @@ class _ScanScreenState extends State<ScanScreen> {
           ),
           SizedBox(
             width: tfWidth,
-            child: TextField(
+            child: TextField
+              (
               controller: qtyCtrl,
               textAlign: TextAlign.center,
               keyboardType: TextInputType.number,
               inputFormatters: [FilteringTextInputFormatter.digitsOnly],
               onChanged: _onQtyChanged,
               style: TextStyle(
-                  fontWeight: FontWeight.w700, fontSize: isTablet ? 18 : 16),
+                  fontWeight: FontWeight.w700,
+                  fontSize: isTablet ? 18 : 16),
               decoration: const InputDecoration(
                 isDense: true,
                 border: InputBorder.none,
@@ -415,36 +447,52 @@ class _ScanScreenState extends State<ScanScreen> {
 }
 
 class _SoLine {
-  final String id;
+  final String txnid;
   final String code;
   final String desc;
+  final int orderedQty;
+  final double rate;
   final String unit;
-  final int remaining;
+
+  // قديم راجع من السيرفر
   int scanned;
+
+  // جديد داخل الجلسة
   int tempScanned;
+
   List<String> barcodes;
 
   _SoLine({
-    required this.id,
+    required this.txnid,
     required this.code,
     required this.desc,
-    required this.remaining,
-    required this.scanned,
-    required this.unit,
-    int? tempScanned,
+    required this.orderedQty,
+    required this.rate,
+    this.unit = "PCS",
+    this.scanned = 0,
+    this.tempScanned = 0,
     List<String>? barcodes,
-  })  : tempScanned = tempScanned ?? 0,
-        barcodes = barcodes ?? [];
+  }) : barcodes = barcodes ?? [];
 
   factory _SoLine.fromJson(Map<String, dynamic> json) {
+    // بعض الـ APIs بترجع firstScan/secondScan
+    final first = (json['firstScan'] as num?)?.toInt() ??
+        (json['firstscan'] as num?)?.toInt() ??
+        0;
+    final second = (json['secondScan'] as num?)?.toInt() ??
+        (json['secondscan'] as num?)?.toInt() ??
+        (json['scondScan'] as num?)?.toInt() ??
+        0;
+
     return _SoLine(
-      id: json['lineID']?.toString() ?? '',
+      txnid: json['txnid']?.toString() ?? '',
       code: json['item']?.toString() ?? '',
       desc: json['description']?.toString() ?? '',
-      remaining: (json['orderdQty'] ?? 0).toInt(),
-      scanned: 0,
-      unit: json['unit']?.toString() ?? 'PCS',
-      tempScanned: 0,
+      orderedQty: (json['orderdQty'] as num?)?.toInt() ??
+          (json['orderedQty'] as num?)?.toInt() ??
+          0,
+      rate: (json['rate'] as num?)?.toDouble() ?? 0.0,
+      scanned: first + second, // الإجمالي القديم
       barcodes: List<String>.from(json['barcodes'] ?? []),
     );
   }
