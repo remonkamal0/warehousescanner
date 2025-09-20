@@ -8,7 +8,7 @@ class SalesOrder {
   final int itemsCount;
   final String soGUID;
   final String txnNumber;
-  final String txnID; // ده المهم علشان تدخل بيه على صفحة المنتجات
+  final String txnID; // مهم علشان ندخل بيه على المنتجات
 
   const SalesOrder({
     required this.soID,
@@ -34,7 +34,7 @@ class SalesOrder {
       itemsCount: json['itemsCount'],
       soGUID: json['soGUID'],
       txnNumber: json['txnNumber'],
-      txnID: json['txnID'],
+      txnID: json['txnID'].toString(), // لو رجع int هنحوّله نص
     );
   }
 }

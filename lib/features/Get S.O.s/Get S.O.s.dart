@@ -21,7 +21,7 @@ class _GetSOSScreenState extends State<GetSOSScreen> {
 
   /// ✅ API Call
   Future<void> fetchSalesOrders() async {
-    const url = "http://irs.evioteg.com:8080/api/salesorder";
+    const url = "http://irs.evioteg.com:8080/api/SalesOrder/GetSalesOrderFSC";
 
     try {
       final response = await http.get(Uri.parse(url));

@@ -1,34 +1,70 @@
+import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:http/http.dart' as http;
 
 class ReScanScreen extends StatefulWidget {
-  final String soNumber; // رقم الـ S.O اللي جاي من الشاشة السابقة
-  const ReScanScreen({super.key, required this.soNumber});
+  final String soNumber;
+  final String txnID;
+
+  const ReScanScreen({
+    super.key,
+    required this.soNumber,
+    required this.txnID,
+  });
 
   @override
   State<ReScanScreen> createState() => _ReScanScreenState();
 }
 
 class _ReScanScreenState extends State<ReScanScreen> {
-  // بيانات تجريبية (بدلها ببيانات API لاحقًا)
-  final List<_SoLine> lines = [
-    _SoLine(code: 'GLCWC1', desc: 'GAME LEAF CIGARILLOS WHITE CHOC', remaining: 3, scanned: 1, unit: 'ea'),
-    _SoLine(code: 'SLRC',   desc: 'Desc SLRC',  remaining: 2, scanned: 0, unit: 'ea'),
-    _SoLine(code: 'SLV',    desc: 'Desc SLV',   remaining: 4, scanned: 2, unit: 'ea'),
-    _SoLine(code: 'SSLDL',  desc: 'Desc SSLDL', remaining: 5, scanned: 5, unit: 'ea'),
-  ];
-
+  List<_SoLine> lines = [];
+  bool isLoading = true;
   int? selectedIndex;
-  _SoLine? get selectedLine => (selectedIndex != null) ? lines[selectedIndex!] : null;
+
+  _SoLine? get selectedLine =>
+      (selectedIndex != null) ? lines[selectedIndex!] : null;
 
   final TextEditingController qtyCtrl = TextEditingController(text: '0');
+  final TextEditingController barcodeCtrl = TextEditingController();
+
   int get qty => int.tryParse(qtyCtrl.text) ?? 0;
   set qty(int v) => qtyCtrl.text = v.toString();
 
   @override
-  void dispose() {
-    qtyCtrl.dispose();
-    super.dispose();
+  void initState() {
+    super.initState();
+    fetchLines();
+
+    // Listener للباركود
+    barcodeCtrl.addListener(() {
+      final barcode = barcodeCtrl.text.trim();
+      if (barcode.isNotEmpty) {
+        _applyScannedBarcode(barcode);
+        barcodeCtrl.clear();
+      }
+    });
+  }
+
+  Future<void> fetchLines() async {
+    final url =
+        "http://irs.evioteg.com:8080/api/SalesOrderLine/GetOrderLinesWithBarcodesSSC/${widget.txnID}";
+    try {
+      final response = await http.get(Uri.parse(url));
+      if (response.statusCode == 200) {
+        final data = json.decode(response.body) as List;
+        setState(() {
+          lines = data.map((e) => _SoLine.fromJson(e)).toList();
+          isLoading = false;
+        });
+      } else {
+        throw Exception("Failed to load sales order lines");
+      }
+    } catch (e) {
+      setState(() => isLoading = false);
+      ScaffoldMessenger.of(context)
+          .showSnackBar(SnackBar(content: Text("Error: $e")));
+    }
   }
 
   void _selectRow(int index) {
@@ -43,8 +79,9 @@ class _ReScanScreenState extends State<ReScanScreen> {
     final next = qty + 1;
     qty = next;
     setState(() {});
-    final maxCanAdd = selectedLine!.remaining - selectedLine!.scanned;
-    if (next > maxCanAdd) _showOverDialog(); // warning فقط
+    // تحذير لو الإجمالي (قديم + جديد) عدى المطلوب
+    final totalIfNext = selectedLine!.scanned + next;
+    if (totalIfNext > selectedLine!.orderedQty) _showOverDialog();
   }
 
   void _decQty() {
@@ -63,34 +100,65 @@ class _ReScanScreenState extends State<ReScanScreen> {
       return;
     }
     setState(() {});
-    final maxCanAdd = selectedLine!.remaining - selectedLine!.scanned;
-    if (val > maxCanAdd) _showOverDialog(); // warning فقط
+    // تحذير لو الإجمالي (قديم + جديد) عدى المطلوب
+    final totalIfVal = selectedLine!.scanned + val;
+    if (totalIfVal > selectedLine!.orderedQty) _showOverDialog();
   }
 
   void _addQty() {
     if (selectedLine == null || qty == 0) return;
-
     setState(() {
-      selectedLine!.scanned += qty;
+      selectedLine!.tempScanned += qty;
       qty = 0;
     });
-
-    final maxAllowed = selectedLine!.remaining;
-    if (selectedLine!.scanned > maxAllowed) {
-      _showOverDialog(); // warning فقط
-    }
   }
 
   void _clearLine() {
     if (selectedLine == null) return;
     setState(() {
-      selectedLine!.scanned = 0;
+      selectedLine!.tempScanned = 0;
       qty = 0;
     });
   }
 
-  void _done() {
-    Navigator.pop(context);
+  Future<void> _done() async {
+    final url =
+        "http://irs.evioteg.com:8080/api/SalesOrderLine/UpdateOrderDetailsSSC//${widget.txnID}";
+
+    try {
+      // نجهز الـ payload بالشكل المطلوب:
+      // itemCode = code
+      // quantity = scanned (قديم) + tempScanned (جديد)
+      final payload = lines
+          .map((l) => {
+        "itemCode": l.code,
+        "quantity": l.scanned + l.tempScanned,
+      })
+          .toList();
+
+      final response = await http.put(
+        Uri.parse(url),
+        headers: {"Content-Type": "application/json"},
+        body: json.encode(payload),
+      );
+
+      if (response.statusCode == 200) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text("تم إرسال البيانات بنجاح ✅")),
+          );
+          Navigator.pop(context, true);
+        }
+      } else {
+        throw Exception("فشل الإرسال (${response.statusCode}): ${response.body}");
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text("Error: $e")),
+        );
+      }
+    }
   }
 
   Future<void> _showOverDialog() {
@@ -108,15 +176,36 @@ class _ReScanScreenState extends State<ReScanScreen> {
         actions: [
           ElevatedButton(
             style: ElevatedButton.styleFrom(
-              backgroundColor: Colors.green, // نفس اللون بتاعك
+              backgroundColor: const Color(0xFF27AE60),
               shape: const StadiumBorder(),
             ),
             onPressed: () => Navigator.pop(context),
-            child: const Text('OK'),
+            child: const Text(
+              'OK',
+              style: TextStyle(color: Colors.white),
+            ),
           )
         ],
       ),
     );
+  }
+
+  void _applyScannedBarcode(String barcode) {
+    final index = lines.indexWhere((line) => line.barcodes.contains(barcode));
+    if (index != -1) {
+      setState(() {
+        selectedIndex = index;
+        qty = 1;
+      });
+      _addQty(); // هيزود tempScanned +1 وهنظهر تحذير لو عدى المطلوب
+      final line = lines[index];
+      if (line.scanned + line.tempScanned > line.orderedQty) {
+        _showOverDialog();
+      }
+    } else {
+      ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Barcode not found')));
+    }
   }
 
   @override
@@ -125,135 +214,166 @@ class _ReScanScreenState extends State<ReScanScreen> {
     final isTablet = size.width >= 600;
 
     return Scaffold(
+      backgroundColor: Colors.white,
       appBar: AppBar(
-        backgroundColor: Colors.green,
+        backgroundColor: const Color(0xFF27AE60),
         centerTitle: true,
         leading: IconButton(
           icon: const Icon(Icons.arrow_back, color: Colors.white),
           onPressed: () => Navigator.pop(context),
         ),
         title: Text(
-          'Re-Scan - ${widget.soNumber}',
-          style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w800),
+          'ReScan - ${widget.soNumber}',
+          style: const TextStyle(
+              color: Colors.white, fontWeight: FontWeight.w800),
         ),
       ),
-      body: Column(
+      body: Stack(
         children: [
-          // ===== جدول قابل للتمرير أفقياً ورأسياً (يحمي من overflow) =====
-          Expanded(
-            child: SingleChildScrollView(
-              scrollDirection: Axis.vertical,
-              child: SingleChildScrollView(
-                scrollDirection: Axis.horizontal,
-                child: DataTable(
-                  columnSpacing: 16,
-                  headingRowColor: MaterialStateProperty.all(const Color(0xFFEFEFF4)),
-                  columns: const [
-                    DataColumn(label: Text('Product Code', style: TextStyle(fontWeight: FontWeight.w700))),
-                    DataColumn(label: Text('Remaining',    style: TextStyle(fontWeight: FontWeight.w700))),
-                    DataColumn(label: Text('Sc',           style: TextStyle(fontWeight: FontWeight.w700))),
-                    DataColumn(label: Text('U/M',          style: TextStyle(fontWeight: FontWeight.w700))),
-                  ],
-                  rows: List.generate(lines.length, (i) {
-                    final line = lines[i];
-                    final selected = i == selectedIndex;
-                    return DataRow(
-                      selected: selected,
-                      color: MaterialStateProperty.resolveWith<Color?>(
-                            (states) => selected ? const Color(0xFFE0F7E9) : null,
-                      ),
-                      onSelectChanged: (_) => _selectRow(i),
-                      cells: [
-                        DataCell(
-                          SizedBox(
-                            width: isTablet ? 220 : 120,
-                            child: Text(
-                              line.code,
-                              overflow: TextOverflow.ellipsis,
+          isLoading
+              ? const Center(child: CircularProgressIndicator())
+              : Column(
+            children: [
+              Expanded(
+                child: SingleChildScrollView(
+                  scrollDirection: Axis.vertical,
+                  child: DataTable(
+                    headingRowColor:
+                    MaterialStateProperty.all(const Color(0xFFEFEFF4)),
+                    columns: const [
+                      DataColumn(
+                          label: Text('SKU',
+                              style:
+                              TextStyle(fontWeight: FontWeight.w700))),
+                      DataColumn(
+                          label: Text('SOQ',
+                              style:
+                              TextStyle(fontWeight: FontWeight.w700))),
+                      DataColumn(
+                          label: Text('Sc',
+                              style:
+                              TextStyle(fontWeight: FontWeight.w700))),
+                      DataColumn(
+                          label: Text('U/M',
+                              style:
+                              TextStyle(fontWeight: FontWeight.w700))),
+                    ],
+                    rows: List.generate(lines.length, (i) {
+                      final line = lines[i];
+                      final selected = i == selectedIndex;
+                      return DataRow(
+                        selected: selected,
+                        color: MaterialStateProperty.resolveWith<Color?>(
+                                (states) =>
+                            selected ? const Color(0xFFE0ECFF) : null),
+                        onSelectChanged: (_) => _selectRow(i),
+                        cells: [
+                          DataCell(Text(line.code)),
+                          DataCell(Text('${line.orderedQty}')),
+                          DataCell(
+                            // المعروض هنا ممكن يبقى الإجمالي أو المؤقت — حسب ما تحب
+                            Text('${line.scanned + line.tempScanned}'),
+                          ),
+                          DataCell(Text(line.unit)),
+                        ],
+                      );
+                    }),
+                  ),
+                ),
+              ),
+              Container(
+                width: double.infinity,
+                padding: EdgeInsets.symmetric(
+                  horizontal: isTablet ? size.width * 0.06 : 16,
+                  vertical: 14,
+                ),
+                decoration: const BoxDecoration(
+                  color: Colors.white,
+                  border: Border(
+                      top: BorderSide(color: Color(0xFFE6E6E6))),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Wrap(
+                      spacing: 10,
+                      runSpacing: 10,
+                      crossAxisAlignment: WrapCrossAlignment.center,
+                      children: [
+                        _chipButton('Clr Line', onTap: _clearLine),
+                        _chipButton('Add', onTap: _addQty),
+                        const Text('Qty:',
+                            style:
+                            TextStyle(fontWeight: FontWeight.w600)),
+                        _qtyBox(isTablet: isTablet),
+                      ],
+                    ),
+                    const SizedBox(height: 10),
+                    Text(
+                      selectedLine != null
+                          ? '${selectedLine!.desc}'
+                          : 'Select a row from the table…',
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(fontWeight: FontWeight.w700),
+                    ),
+                    const SizedBox(height: 12),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: OutlinedButton(
+                            onPressed: () => Navigator.pop(context),
+                            style: OutlinedButton.styleFrom(
+                              padding:
+                              const EdgeInsets.symmetric(vertical: 14),
+                              shape: RoundedRectangleBorder(
+                                  borderRadius:
+                                  BorderRadius.circular(10)),
+                            ),
+                            child: const Text('Cancel'),
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: ElevatedButton(
+                            onPressed: _done,
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: const Color(0xFF27AE60),
+                              padding:
+                              const EdgeInsets.symmetric(vertical: 14),
+                              shape: RoundedRectangleBorder(
+                                  borderRadius:
+                                  BorderRadius.circular(10)),
+                            ),
+                            child: const Text(
+                              'Done',
+                              style: TextStyle(
+                                  color: Colors.white,
+                                  fontWeight: FontWeight.w700),
                             ),
                           ),
                         ),
-                        DataCell(Text('${line.remaining}')),
-                        DataCell(Text('${line.scanned}')),
-                        DataCell(Text(line.unit)),
                       ],
-                    );
-                  }),
-                ),
-              ),
-            ),
-          ),
-
-          // ===== اللوحة السفلية (Scroll أفقي لحماية overflow على شاشات صغيرة) =====
-          Container(
-            width: double.infinity,
-            padding: EdgeInsets.symmetric(
-              horizontal: isTablet ? size.width * 0.06 : 16,
-              vertical: 14,
-            ),
-            decoration: const BoxDecoration(
-              color: Colors.white,
-              border: Border(top: BorderSide(color: Color(0xFFE6E6E6))),
-            ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                SingleChildScrollView(
-                  scrollDirection: Axis.horizontal,
-                  child: Row(
-                    crossAxisAlignment: CrossAxisAlignment.center,
-                    children: [
-                      _chipButton('Clr Line', onTap: _clearLine),
-                      const SizedBox(width: 10),
-                      _chipButton('Add', onTap: _addQty),
-                      const SizedBox(width: 12),
-                      const Text('Qty:', style: TextStyle(fontWeight: FontWeight.w600)),
-                      const SizedBox(width: 8),
-                      _qtyBox(isTablet: isTablet),
-                    ],
-                  ),
-                ),
-
-                const SizedBox(height: 10),
-                Text(
-                  selectedLine != null
-                      ? '${selectedLine!.desc}\n${selectedLine!.code}'
-                      : 'Select a row from the table…',
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(fontWeight: FontWeight.w700),
-                ),
-                const SizedBox(height: 12),
-                Row(
-                  children: [
-                    Expanded(
-                      child: OutlinedButton(
-                        onPressed: () => Navigator.pop(context),
-                        style: OutlinedButton.styleFrom(
-                          padding: const EdgeInsets.symmetric(vertical: 14),
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                        ),
-                        child: const Text('Cancel'),
-                      ),
                     ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: ElevatedButton(
-                        onPressed: _done,
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: Colors.green,
-                          padding: const EdgeInsets.symmetric(vertical: 14),
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                        ),
-                        child: const Text(
-                          'Done',
-                          style: TextStyle(color: Colors.white, fontWeight: FontWeight.w700),
-                        ),
-                      ),
-                    ),
+                    const SizedBox(height: 50)
                   ],
                 ),
-              ],
+              ),
+            ],
+          ),
+          // TextField مخفي لاستقبال الباركود
+          Positioned(
+            left: 0,
+            top: 0,
+            child: SizedBox(
+              width: 0,
+              height: 0,
+              child: TextField(
+                controller: barcodeCtrl,
+                autofocus: true,
+                enableInteractiveSelection: false,
+                showCursor: false,
+              ),
             ),
           ),
         ],
@@ -262,25 +382,21 @@ class _ReScanScreenState extends State<ReScanScreen> {
   }
 
   Widget _chipButton(String label, {required VoidCallback onTap}) {
-    return Padding(
-      padding: const EdgeInsets.only(right: 6.0),
-      child: ElevatedButton(
-        onPressed: selectedLine == null ? null : onTap,
-        style: ElevatedButton.styleFrom(
-          backgroundColor: const Color(0xFFF5F6F8),
-          foregroundColor: Colors.black87,
-          elevation: 0,
-          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-        ),
-        child: Text(label, style: const TextStyle(fontWeight: FontWeight.w700)),
+    return ElevatedButton(
+      onPressed: selectedLine == null ? null : onTap,
+      style: ElevatedButton.styleFrom(
+        backgroundColor: const Color(0xFFF5F6F8),
+        foregroundColor: Colors.black87,
+        elevation: 0,
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
       ),
+      child: Text(label, style: const TextStyle(fontWeight: FontWeight.w700)),
     );
   }
 
   Widget _qtyBox({required bool isTablet}) {
     final tfWidth = isTablet ? 90.0 : 70.0;
-
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
       decoration: BoxDecoration(
@@ -297,27 +413,24 @@ class _ReScanScreenState extends State<ReScanScreen> {
               child: Icon(Icons.remove, size: 20),
             ),
           ),
-          // Flexible حوالين SizedBox عشان المربع ما يعملش overflow
-          Flexible(
-            child: SizedBox(
-              width: tfWidth,
-              child: TextField(
-                controller: qtyCtrl,
-                textAlign: TextAlign.center,
-                keyboardType: TextInputType.number,
-                inputFormatters: [FilteringTextInputFormatter.digitsOnly],
-                onChanged: _onQtyChanged,
-                style: TextStyle(
+          SizedBox(
+            width: tfWidth,
+            child: TextField
+              (
+              controller: qtyCtrl,
+              textAlign: TextAlign.center,
+              keyboardType: TextInputType.number,
+              inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+              onChanged: _onQtyChanged,
+              style: TextStyle(
                   fontWeight: FontWeight.w700,
-                  fontSize: isTablet ? 18 : 16,
-                ),
-                decoration: const InputDecoration(
-                  isDense: true,
-                  border: InputBorder.none,
-                  contentPadding: EdgeInsets.symmetric(vertical: 8),
-                ),
-                enabled: selectedLine != null,
+                  fontSize: isTablet ? 18 : 16),
+              decoration: const InputDecoration(
+                isDense: true,
+                border: InputBorder.none,
+                contentPadding: EdgeInsets.symmetric(vertical: 8),
               ),
+              enabled: selectedLine != null,
             ),
           ),
           InkWell(
@@ -334,17 +447,53 @@ class _ReScanScreenState extends State<ReScanScreen> {
 }
 
 class _SoLine {
+  final String txnid;
   final String code;
   final String desc;
+  final int orderedQty;
+  final double rate;
   final String unit;
-  final int remaining;
+
+  // قديم راجع من السيرفر
   int scanned;
 
+  // جديد داخل الجلسة
+  int tempScanned;
+
+  List<String> barcodes;
+
   _SoLine({
+    required this.txnid,
     required this.code,
     required this.desc,
-    required this.remaining,
-    required this.scanned,
-    required this.unit,
-  });
+    required this.orderedQty,
+    required this.rate,
+    this.unit = "PCS",
+    this.scanned = 0,
+    this.tempScanned = 0,
+    List<String>? barcodes,
+  }) : barcodes = barcodes ?? [];
+
+  factory _SoLine.fromJson(Map<String, dynamic> json) {
+    // بعض الـ APIs بترجع firstScan/secondScan
+    final first = (json['firstScan'] as num?)?.toInt() ??
+        (json['firstscan'] as num?)?.toInt() ??
+        0;
+    final second = (json['secondScan'] as num?)?.toInt() ??
+        (json['secondscan'] as num?)?.toInt() ??
+        (json['scondScan'] as num?)?.toInt() ??
+        0;
+
+    return _SoLine(
+      txnid: json['txnid']?.toString() ?? '',
+      code: json['item']?.toString() ?? '',
+      desc: json['description']?.toString() ?? '',
+      orderedQty: (json['orderdQty'] as num?)?.toInt() ??
+          (json['orderedQty'] as num?)?.toInt() ??
+          0,
+      rate: (json['rate'] as num?)?.toDouble() ?? 0.0,
+      scanned: first + second, // الإجمالي القديم
+      barcodes: List<String>.from(json['barcodes'] ?? []),
+    );
+  }
 }

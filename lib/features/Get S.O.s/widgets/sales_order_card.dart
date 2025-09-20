@@ -5,36 +5,36 @@ class SalesOrderCard extends StatelessWidget {
   final SalesOrder so;
   final bool isSelected;
   final VoidCallback onTap;
+  final Color primaryColor; // لون ديناميكي
 
   const SalesOrderCard({
     super.key,
     required this.so,
     required this.isSelected,
     required this.onTap,
+    this.primaryColor = Colors.blue, // Default لو ما تبعتش لون
   });
 
   @override
   Widget build(BuildContext context) {
     return Card(
-      elevation: isSelected ? 4 : 1, // يبان انه متعلم
-      color: isSelected ? Colors.blue.shade50 : Colors.white, // لون مختلف عند التحديد
+      elevation: isSelected ? 4 : 1,
+      color: isSelected ? primaryColor.withOpacity(0.08) : Colors.white,
       margin: const EdgeInsets.symmetric(vertical: 6),
       child: InkWell(
-        onTap: onTap, // الكارت كله بيتضغط
+        onTap: onTap,
         borderRadius: BorderRadius.circular(8),
         child: Padding(
           padding: const EdgeInsets.all(12.0),
           child: Row(
             crossAxisAlignment: CrossAxisAlignment.center,
             children: [
-              // ✅ أيقونة بدل الـ Radio
               Icon(
                 isSelected ? Icons.radio_button_checked : Icons.radio_button_off,
-                color: isSelected ? Colors.blue : Colors.grey,
+                color: isSelected ? primaryColor : Colors.grey,
               ),
               const SizedBox(width: 12),
 
-              // بيانات العميل
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -58,23 +58,19 @@ class SalesOrderCard extends StatelessWidget {
                 ),
               ),
 
-              // الحالة والتاريخ
               Column(
                 crossAxisAlignment: CrossAxisAlignment.end,
                 children: [
                   Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 12,
-                      vertical: 6,
-                    ),
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                     decoration: BoxDecoration(
-                      //color: Colors.blue,
                       borderRadius: BorderRadius.circular(8),
+                      border: Border.all(color: primaryColor, width: 1),
                     ),
                     child: Text(
                       so.soStatus,
-                      style: const TextStyle(
-                        color: Colors.blue,
+                      style: TextStyle(
+                        color: primaryColor,
                         fontWeight: FontWeight.bold,
                         fontSize: 13,
                       ),
