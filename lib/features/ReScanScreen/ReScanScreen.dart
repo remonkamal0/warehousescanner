@@ -80,8 +80,15 @@ class _ReScanScreenState extends State<ReScanScreen> {
     final next = qty + 1;
     qty = next;
     setState(() {});
-    final totalIfNext = selectedLine!.scanned + next;
-    if (totalIfNext > selectedLine!.orderedQty) _showOverDialog();
+    final totalIfNext =
+        selectedLine!.scanned + selectedLine!.tempScanned + next;
+    if (totalIfNext > selectedLine!.orderedQty) {
+      _showOverDialog(
+        ordered: selectedLine!.orderedQty,
+        current: selectedLine!.scanned + selectedLine!.tempScanned,
+        adding: next,
+      );
+    }
   }
 
   void _decQty() {
@@ -100,8 +107,14 @@ class _ReScanScreenState extends State<ReScanScreen> {
       return;
     }
     setState(() {});
-    final totalIfVal = selectedLine!.scanned + val;
-    if (totalIfVal > selectedLine!.orderedQty) _showOverDialog();
+    final totalIfVal = selectedLine!.scanned + selectedLine!.tempScanned + val;
+    if (totalIfVal > selectedLine!.orderedQty) {
+      _showOverDialog(
+        ordered: selectedLine!.orderedQty,
+        current: selectedLine!.scanned + selectedLine!.tempScanned,
+        adding: val,
+      );
+    }
   }
 
   void _addQty() {
@@ -162,16 +175,33 @@ class _ReScanScreenState extends State<ReScanScreen> {
     }
   }
 
-  Future<void> _showOverDialog() {
+  Future<void> _showOverDialog({
+    required int ordered,
+    required int current,
+    required int adding,
+  }) {
     return showDialog<void>(
       context: context,
       barrierDismissible: true,
       builder: (_) => AlertDialog(
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        content: const Text(
+        title: const Text(
           'Qty is Over',
+          style: TextStyle(fontWeight: FontWeight.bold),
           textAlign: TextAlign.center,
-          style: TextStyle(fontWeight: FontWeight.w700),
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text("Ordered Qty: $ordered"),
+            Text("Current Qty: $current"),
+            Text("Trying to Add: $adding"),
+            const SizedBox(height: 8),
+            const Text(
+              "⚠️ The quantity will still be added.",
+              style: TextStyle(color: Colors.red, fontWeight: FontWeight.w600),
+            ),
+          ],
         ),
         actionsAlignment: MainAxisAlignment.center,
         actions: [
@@ -181,10 +211,7 @@ class _ReScanScreenState extends State<ReScanScreen> {
               shape: const StadiumBorder(),
             ),
             onPressed: () => Navigator.pop(context),
-            child: const Text(
-              'OK',
-              style: TextStyle(color: Colors.white),
-            ),
+            child: const Text('OK', style: TextStyle(color: Colors.white)),
           )
         ],
       ),
@@ -275,7 +302,11 @@ class _ReScanScreenState extends State<ReScanScreen> {
       _addQty();
       final line = lines[index];
       if (line.scanned + line.tempScanned > line.orderedQty) {
-        _showOverDialog();
+        _showOverDialog(
+          ordered: line.orderedQty,
+          current: line.scanned + line.tempScanned - 1,
+          adding: 1,
+        );
       }
     } else {
       _showInvalidBarcodeDialog(barcode);
@@ -362,8 +393,8 @@ class _ReScanScreenState extends State<ReScanScreen> {
                 ),
                 decoration: const BoxDecoration(
                   color: Colors.white,
-                  border: Border(
-                      top: BorderSide(color: Color(0xFFE6E6E6))),
+                  border:
+                  Border(top: BorderSide(color: Color(0xFFE6E6E6))),
                 ),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -388,8 +419,7 @@ class _ReScanScreenState extends State<ReScanScreen> {
                           : 'Select a row from the table…',
                       maxLines: 2,
                       overflow: TextOverflow.ellipsis,
-                      style:
-                      const TextStyle(fontWeight: FontWeight.w700),
+                      style: const TextStyle(fontWeight: FontWeight.w700),
                     ),
                     const SizedBox(height: 12),
                     Row(
@@ -445,12 +475,14 @@ class _ReScanScreenState extends State<ReScanScreen> {
               child: TextField(
                 controller: barcodeCtrl,
                 focusNode: _barcodeFocus,
-                autofocus: true,
+                autofocus: false,          // ✅ عطلنا الاوتوفوكس
                 enableInteractiveSelection: false,
                 showCursor: false,
+                readOnly: true,            // ✅ ده اللي يقفل الكيبورد تمامًا
               ),
             ),
           ),
+
         ],
       ),
     );
@@ -464,8 +496,7 @@ class _ReScanScreenState extends State<ReScanScreen> {
         foregroundColor: Colors.black87,
         elevation: 0,
         padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-        shape:
-        RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
       ),
       child: Text(label, style: const TextStyle(fontWeight: FontWeight.w700)),
     );

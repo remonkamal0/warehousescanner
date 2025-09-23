@@ -1,3 +1,4 @@
+// --- نفس الـ imports بتاعتك فوق ---
 import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -77,10 +78,19 @@ class _ScanScreenState extends State<ScanScreen> {
   void _incQty() {
     if (selectedLine == null) return;
     final next = qty + 1;
+    final totalIfNext =
+        selectedLine!.scanned + selectedLine!.tempScanned + next;
+
+    if (totalIfNext > selectedLine!.orderedQty) {
+      _showOverDialog(
+        selectedLine!.orderedQty,
+        selectedLine!.scanned + selectedLine!.tempScanned,
+        1,
+      );
+    }
+
     qty = next;
     setState(() {});
-    final totalIfNext = selectedLine!.scanned + next;
-    if (totalIfNext > selectedLine!.orderedQty) _showOverDialog();
   }
 
   void _decQty() {
@@ -93,18 +103,35 @@ class _ScanScreenState extends State<ScanScreen> {
   void _onQtyChanged(String v) {
     if (selectedLine == null) return;
     final val = int.tryParse(v) ?? 0;
-    if (val < 0) {
-      qty = 0;
-      setState(() {});
-      return;
+    final totalIfVal =
+        selectedLine!.scanned + selectedLine!.tempScanned + val;
+
+    if (totalIfVal > selectedLine!.orderedQty) {
+      _showOverDialog(
+        selectedLine!.orderedQty,
+        selectedLine!.scanned + selectedLine!.tempScanned,
+        val,
+      );
     }
+
+    qty = val;
     setState(() {});
-    final totalIfVal = selectedLine!.scanned + val;
-    if (totalIfVal > selectedLine!.orderedQty) _showOverDialog();
   }
 
   void _addQty() {
     if (selectedLine == null || qty == 0) return;
+
+    final totalIfAdd =
+        selectedLine!.scanned + selectedLine!.tempScanned + qty;
+
+    if (totalIfAdd > selectedLine!.orderedQty) {
+      _showOverDialog(
+        selectedLine!.orderedQty,
+        selectedLine!.scanned + selectedLine!.tempScanned,
+        qty,
+      );
+    }
+
     setState(() {
       selectedLine!.tempScanned += qty;
       qty = 0;
@@ -197,16 +224,24 @@ class _ScanScreenState extends State<ScanScreen> {
     }
   }
 
-  Future<void> _showOverDialog() {
+  Future<void> _showOverDialog(
+      int ordered, int current, int added) {
     return showDialog<void>(
       context: context,
       barrierDismissible: true,
       builder: (_) => AlertDialog(
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        content: const Text(
-          'Qty is Over',
+        title: const Text(
+          'Qty Over Warning',
+          style: TextStyle(fontWeight: FontWeight.bold),
+        ),
+        content: Text(
+          'Ordered Qty: $ordered\n'
+              'Current Qty: $current\n'
+              'Trying to Add: $added\n\n'
+              '⚠️ This will exceed the ordered quantity!',
           textAlign: TextAlign.center,
-          style: TextStyle(fontWeight: FontWeight.w700),
+          style: const TextStyle(fontWeight: FontWeight.w700),
         ),
         actionsAlignment: MainAxisAlignment.center,
         actions: [
@@ -229,15 +264,22 @@ class _ScanScreenState extends State<ScanScreen> {
   void _applyScannedBarcode(String barcode) {
     final index = lines.indexWhere((line) => line.barcodes.contains(barcode));
     if (index != -1) {
+      final line = lines[index];
+      final totalIfAdd = line.scanned + line.tempScanned + 1;
+
+      if (totalIfAdd > line.orderedQty) {
+        _showOverDialog(
+          line.orderedQty,
+          line.scanned + line.tempScanned,
+          1,
+        );
+      }
+
       setState(() {
         selectedIndex = index;
-        qty = 1;
+        line.tempScanned += 1;
+        qty = 0;
       });
-      _addQty();
-      final line = lines[index];
-      if (line.scanned + line.tempScanned > line.orderedQty) {
-        _showOverDialog();
-      }
     } else {
       _showInvalidBarcodeDialog(barcode);
     }
@@ -336,15 +378,15 @@ class _ScanScreenState extends State<ScanScreen> {
                       return DataRow(
                         selected: selected,
                         color: MaterialStateProperty.resolveWith<Color?>(
-                                (states) =>
-                            selected ? const Color(0xFFE0ECFF) : null),
+                                (states) => selected
+                                ? const Color(0xFFE0ECFF)
+                                : null),
                         onSelectChanged: (_) => _selectRow(i),
                         cells: [
                           DataCell(Text(line.code)),
                           DataCell(Text('${line.orderedQty}')),
                           DataCell(
-                            Text('${line.scanned + line.tempScanned}'),
-                          ),
+                              Text('${line.scanned + line.tempScanned}')),
                           DataCell(Text(line.unit)),
                         ],
                       );
@@ -360,7 +402,8 @@ class _ScanScreenState extends State<ScanScreen> {
                 ),
                 decoration: const BoxDecoration(
                   color: Colors.white,
-                  border: Border(top: BorderSide(color: Color(0xFFE6E6E6))),
+                  border:
+                  Border(top: BorderSide(color: Color(0xFFE6E6E6))),
                 ),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -432,6 +475,7 @@ class _ScanScreenState extends State<ScanScreen> {
               ),
             ],
           ),
+          // ✅ TextField الباركود المخفي من غير كيبورد
           Positioned(
             left: 0,
             top: 0,
@@ -441,9 +485,10 @@ class _ScanScreenState extends State<ScanScreen> {
               child: TextField(
                 controller: barcodeCtrl,
                 focusNode: _barcodeFocus,
-                autofocus: true,
+                autofocus: false,
                 enableInteractiveSelection: false,
                 showCursor: false,
+                readOnly: true,
               ),
             ),
           ),
@@ -558,8 +603,12 @@ class _SoLine {
           (json['orderedQty'] as num?)?.toInt() ??
           0,
       rate: (json['rate'] as num?)?.toDouble() ?? 0.0,
-      scanned: first + second,
-      barcodes: List<String>.from(json['barcodes'] ?? []),
+      scanned: first,
+      tempScanned: second,
+      barcodes: (json['barcodes'] as List<dynamic>?)
+          ?.map((e) => e.toString())
+          .toList() ??
+          [],
     );
   }
 }
