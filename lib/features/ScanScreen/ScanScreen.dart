@@ -167,13 +167,18 @@ class _ScanScreenState extends State<ScanScreen> {
           style: TextStyle(fontWeight: FontWeight.bold),
         ),
         content: const Text(
-          'Are you sure you want to submit the sales order?',
+          'Are you sure you want to submit this supply order?',
           textAlign: TextAlign.center,
         ),
+        actionsAlignment: MainAxisAlignment.spaceEvenly,
         actions: [
-          TextButton(
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.grey,
+              shape: const StadiumBorder(),
+            ),
             onPressed: () => Navigator.pop(context, false),
-            child: const Text('No'),
+            child: const Text('No', style: TextStyle(color: Colors.white)),
           ),
           ElevatedButton(
             style: ElevatedButton.styleFrom(
@@ -181,10 +186,7 @@ class _ScanScreenState extends State<ScanScreen> {
               shape: const StadiumBorder(),
             ),
             onPressed: () => Navigator.pop(context, true),
-            child: const Text(
-              'Yes',
-              style: TextStyle(color: Colors.white),
-            ),
+            child: const Text('Yes', style: TextStyle(color: Colors.white)),
           ),
         ],
       ),

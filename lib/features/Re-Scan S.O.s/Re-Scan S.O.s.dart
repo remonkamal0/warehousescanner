@@ -113,7 +113,7 @@ class _ReScanSOSScreenState extends State<ReScanSOSScreen> {
 
           /// ✅ Button
           _buildScanButton(isTablet),
-          const SizedBox(height: 50),
+          const SizedBox(height: 10),
         ],
       ),
     );

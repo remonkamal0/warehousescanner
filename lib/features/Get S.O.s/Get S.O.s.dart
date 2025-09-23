@@ -113,7 +113,7 @@ class _GetSOSScreenState extends State<GetSOSScreen> {
 
           /// ✅ Button
           _buildScanButton(isTablet),
-          const SizedBox(height: 50),
+          const SizedBox(height: 5),
         ],
       ),
     );
