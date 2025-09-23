@@ -27,6 +27,7 @@ class _ReScanScreenState extends State<ReScanScreen> {
 
   final TextEditingController qtyCtrl = TextEditingController(text: '0');
   final TextEditingController barcodeCtrl = TextEditingController();
+  final FocusNode _barcodeFocus = FocusNode();
 
   int get qty => int.tryParse(qtyCtrl.text) ?? 0;
   set qty(int v) => qtyCtrl.text = v.toString();
@@ -79,7 +80,6 @@ class _ReScanScreenState extends State<ReScanScreen> {
     final next = qty + 1;
     qty = next;
     setState(() {});
-    // تحذير لو الإجمالي (قديم + جديد) عدى المطلوب
     final totalIfNext = selectedLine!.scanned + next;
     if (totalIfNext > selectedLine!.orderedQty) _showOverDialog();
   }
@@ -100,7 +100,6 @@ class _ReScanScreenState extends State<ReScanScreen> {
       return;
     }
     setState(() {});
-    // تحذير لو الإجمالي (قديم + جديد) عدى المطلوب
     final totalIfVal = selectedLine!.scanned + val;
     if (totalIfVal > selectedLine!.orderedQty) _showOverDialog();
   }
@@ -122,13 +121,13 @@ class _ReScanScreenState extends State<ReScanScreen> {
   }
 
   Future<void> _done() async {
+    final confirm = await _showSubmitConfirmDialog();
+    if (confirm != true) return;
+
     final url =
         "http://irs.evioteg.com:8080/api/SalesOrderLine/UpdateOrderDetailsSSC/${widget.txnID}";
 
     try {
-      // نجهز الـ payload بالشكل المطلوب:
-      // itemCode = code
-      // quantity = scanned (قديم) + tempScanned (جديد)
       final payload = lines
           .map((l) => {
         "itemCode": l.code,
@@ -145,12 +144,14 @@ class _ReScanScreenState extends State<ReScanScreen> {
       if (response.statusCode == 200) {
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text("تم إرسال البيانات بنجاح ✅")),
+            const SnackBar(
+                content: Text("The data has been sent successfully.✅")),
           );
           Navigator.pop(context, true);
         }
       } else {
-        throw Exception("فشل الإرسال (${response.statusCode}): ${response.body}");
+        throw Exception(
+            "Transmission failed (${response.statusCode}): ${response.body}");
       }
     } catch (e) {
       if (mounted) {
@@ -190,6 +191,80 @@ class _ReScanScreenState extends State<ReScanScreen> {
     );
   }
 
+  Future<void> _showInvalidBarcodeDialog(String barcode) {
+    return showDialog<void>(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: const Text(
+          'Invalid Barcode',
+          style: TextStyle(fontWeight: FontWeight.bold),
+        ),
+        content: Text(
+          'The scanned barcode "$barcode" is not valid.\nPlease try again.',
+          textAlign: TextAlign.center,
+        ),
+        actionsAlignment: MainAxisAlignment.center,
+        actions: [
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(
+              backgroundColor: const Color(0xFF2F76D2),
+              shape: const StadiumBorder(),
+            ),
+            onPressed: () {
+              Navigator.pop(context);
+              Future.delayed(const Duration(milliseconds: 100), () {
+                FocusScope.of(context).requestFocus(_barcodeFocus);
+              });
+            },
+            child: const Text(
+              'OK',
+              style: TextStyle(color: Colors.white),
+            ),
+          )
+        ],
+      ),
+    );
+  }
+
+  Future<bool?> _showSubmitConfirmDialog() {
+    return showDialog<bool>(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: const Text(
+          'Confirm Submission',
+          style: TextStyle(fontWeight: FontWeight.bold),
+        ),
+        content: const Text(
+          'Are you sure you want to submit this supply order?',
+          textAlign: TextAlign.center,
+        ),
+        actionsAlignment: MainAxisAlignment.spaceEvenly,
+        actions: [
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.grey,
+              shape: const StadiumBorder(),
+            ),
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('No', style: TextStyle(color: Colors.white)),
+          ),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Color(0xFF2F76D2),
+              shape: const StadiumBorder(),
+            ),
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Yes', style: TextStyle(color: Colors.white)),
+          ),
+        ],
+      ),
+    );
+  }
+
   void _applyScannedBarcode(String barcode) {
     final index = lines.indexWhere((line) => line.barcodes.contains(barcode));
     if (index != -1) {
@@ -197,14 +272,13 @@ class _ReScanScreenState extends State<ReScanScreen> {
         selectedIndex = index;
         qty = 1;
       });
-      _addQty(); // هيزود tempScanned +1 وهنظهر تحذير لو عدى المطلوب
+      _addQty();
       final line = lines[index];
       if (line.scanned + line.tempScanned > line.orderedQty) {
         _showOverDialog();
       }
     } else {
-      ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Barcode not found')));
+      _showInvalidBarcodeDialog(barcode);
     }
   }
 
@@ -224,8 +298,8 @@ class _ReScanScreenState extends State<ReScanScreen> {
         ),
         title: Text(
           'ReScan - ${widget.soNumber}',
-          style: const TextStyle(
-              color: Colors.white, fontWeight: FontWeight.w800),
+          style:
+          const TextStyle(color: Colors.white, fontWeight: FontWeight.w800),
         ),
       ),
       body: Stack(
@@ -238,8 +312,8 @@ class _ReScanScreenState extends State<ReScanScreen> {
                 child: SingleChildScrollView(
                   scrollDirection: Axis.vertical,
                   child: DataTable(
-                    headingRowColor:
-                    MaterialStateProperty.all(const Color(0xFFEFEFF4)),
+                    headingRowColor: MaterialStateProperty.all(
+                        const Color(0xFFEFEFF4)),
                     columns: const [
                       DataColumn(
                           label: Text('SKU',
@@ -264,16 +338,15 @@ class _ReScanScreenState extends State<ReScanScreen> {
                       return DataRow(
                         selected: selected,
                         color: MaterialStateProperty.resolveWith<Color?>(
-                                (states) =>
-                            selected ? const Color(0xFFE0ECFF) : null),
+                                (states) => selected
+                                ? const Color(0xFFE0ECFF)
+                                : null),
                         onSelectChanged: (_) => _selectRow(i),
                         cells: [
                           DataCell(Text(line.code)),
                           DataCell(Text('${line.orderedQty}')),
-                          DataCell(
-                            // المعروض هنا ممكن يبقى الإجمالي أو المؤقت — حسب ما تحب
-                            Text('${line.scanned + line.tempScanned}'),
-                          ),
+                          DataCell(Text(
+                              '${line.scanned + line.tempScanned}')),
                           DataCell(Text(line.unit)),
                         ],
                       );
@@ -315,7 +388,8 @@ class _ReScanScreenState extends State<ReScanScreen> {
                           : 'Select a row from the table…',
                       maxLines: 2,
                       overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(fontWeight: FontWeight.w700),
+                      style:
+                      const TextStyle(fontWeight: FontWeight.w700),
                     ),
                     const SizedBox(height: 12),
                     Row(
@@ -324,8 +398,8 @@ class _ReScanScreenState extends State<ReScanScreen> {
                           child: OutlinedButton(
                             onPressed: () => Navigator.pop(context),
                             style: OutlinedButton.styleFrom(
-                              padding:
-                              const EdgeInsets.symmetric(vertical: 14),
+                              padding: const EdgeInsets.symmetric(
+                                  vertical: 14),
                               shape: RoundedRectangleBorder(
                                   borderRadius:
                                   BorderRadius.circular(10)),
@@ -339,8 +413,8 @@ class _ReScanScreenState extends State<ReScanScreen> {
                             onPressed: _done,
                             style: ElevatedButton.styleFrom(
                               backgroundColor: const Color(0xFF27AE60),
-                              padding:
-                              const EdgeInsets.symmetric(vertical: 14),
+                              padding: const EdgeInsets.symmetric(
+                                  vertical: 14),
                               shape: RoundedRectangleBorder(
                                   borderRadius:
                                   BorderRadius.circular(10)),
@@ -361,7 +435,7 @@ class _ReScanScreenState extends State<ReScanScreen> {
               ),
             ],
           ),
-          // TextField مخفي لاستقبال الباركود
+          // TextField مخفي للباركود
           Positioned(
             left: 0,
             top: 0,
@@ -370,6 +444,7 @@ class _ReScanScreenState extends State<ReScanScreen> {
               height: 0,
               child: TextField(
                 controller: barcodeCtrl,
+                focusNode: _barcodeFocus,
                 autofocus: true,
                 enableInteractiveSelection: false,
                 showCursor: false,
@@ -389,7 +464,8 @@ class _ReScanScreenState extends State<ReScanScreen> {
         foregroundColor: Colors.black87,
         elevation: 0,
         padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+        shape:
+        RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
       ),
       child: Text(label, style: const TextStyle(fontWeight: FontWeight.w700)),
     );
@@ -415,8 +491,7 @@ class _ReScanScreenState extends State<ReScanScreen> {
           ),
           SizedBox(
             width: tfWidth,
-            child: TextField
-              (
+            child: TextField(
               controller: qtyCtrl,
               textAlign: TextAlign.center,
               keyboardType: TextInputType.number,
@@ -454,12 +529,8 @@ class _SoLine {
   final double rate;
   final String unit;
 
-  // قديم راجع من السيرفر
   int scanned;
-
-  // جديد داخل الجلسة
   int tempScanned;
-
   List<String> barcodes;
 
   _SoLine({
@@ -475,7 +546,6 @@ class _SoLine {
   }) : barcodes = barcodes ?? [];
 
   factory _SoLine.fromJson(Map<String, dynamic> json) {
-    // بعض الـ APIs بترجع firstScan/secondScan
     final first = (json['firstScan'] as num?)?.toInt() ??
         (json['firstscan'] as num?)?.toInt() ??
         0;
@@ -492,7 +562,7 @@ class _SoLine {
           (json['orderedQty'] as num?)?.toInt() ??
           0,
       rate: (json['rate'] as num?)?.toDouble() ?? 0.0,
-      scanned: first + second, // الإجمالي القديم
+      scanned: first + second,
       barcodes: List<String>.from(json['barcodes'] ?? []),
     );
   }

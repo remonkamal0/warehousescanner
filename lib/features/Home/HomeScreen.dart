@@ -3,7 +3,7 @@ import 'package:flutter/services.dart';
 
 import '../Get S.O.s/Get S.O.s.dart';
 import '../Re-Scan S.O.s/Re-Scan S.O.s.dart';
-import '../SendSOSScreen/SendSOSScreen.dart';
+// import '../SendSOSScreen/SendSOSScreen.dart';
 
 class HomeScreen extends StatelessWidget {
   const HomeScreen({super.key});
@@ -14,7 +14,6 @@ class HomeScreen extends StatelessWidget {
     final isTablet = size.width >= 600;
 
     // قياسات مرنة
-    final horizPad = isTablet ? size.width * 0.18 : 32.0;
     final btnHeight = isTablet ? 64.0 : 56.0;
     final btnRadius = isTablet ? 18.0 : 16.0;
     final fontSize = isTablet ? 22.0 : 18.0;
@@ -34,13 +33,15 @@ class HomeScreen extends StatelessWidget {
         ),
       ),
       body: Center(
-        child: SingleChildScrollView(
-          padding: EdgeInsets.symmetric(horizontal: horizPad, vertical: 28),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              // زر Get S.O.s
-              _ActionButton(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center, // 👈 يخليهم في نص الشاشة
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Padding(
+              padding: EdgeInsets.symmetric(
+                horizontal: isTablet ? size.width * 0.18 : 32.0,
+              ),
+              child: _ActionButton(
                 label: 'Get S.O.s',
                 bg: const Color(0xFF2F76D2),
                 shadow: const Color(0x332F76D2),
@@ -56,12 +57,16 @@ class HomeScreen extends StatelessWidget {
                   );
                 },
               ),
-              SizedBox(height: gap),
+            ),
+            SizedBox(height: gap),
 
-              // زر Re-Scan S.O.s (أخضر)
-              _ActionButton(
+            Padding(
+              padding: EdgeInsets.symmetric(
+                horizontal: isTablet ? size.width * 0.18 : 32.0,
+              ),
+              child: _ActionButton(
                 label: 'Re-Scan S.O.s',
-                bg: const Color(0xFF27AE60), // أخضر
+                bg: const Color(0xFF27AE60),
                 shadow: const Color(0x3327AE60),
                 height: btnHeight,
                 radius: btnRadius,
@@ -75,29 +80,14 @@ class HomeScreen extends StatelessWidget {
                   );
                 },
               ),
-              SizedBox(height: gap),
+            ),
+            SizedBox(height: gap),
 
-              // زر Send S.O.s
-              _ActionButton(
-                label: 'Send S.O.s',
-                bg: const Color(0xFFF39C12),
-                shadow: const Color(0x33F39C12),
-                height: btnHeight,
-                radius: btnRadius,
-                fontSize: fontSize,
-                onTap: () {
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (_) => const SendSOSScreen(),
-                    ),
-                  );
-                },
+            Padding(
+              padding: EdgeInsets.symmetric(
+                horizontal: isTablet ? size.width * 0.18 : 32.0,
               ),
-              SizedBox(height: gap),
-
-              // زر Exit
-              _ActionButton(
+              child: _ActionButton(
                 label: 'Exit',
                 bg: const Color(0xFFE74C3C),
                 shadow: const Color(0x33E74C3C),
@@ -105,12 +95,36 @@ class HomeScreen extends StatelessWidget {
                 radius: btnRadius,
                 fontSize: fontSize,
                 onTap: () {
-                  SystemNavigator.pop();
+                  _showExitDialog(context);
                 },
               ),
-            ],
-          ),
+            ),
+          ],
         ),
+      ),
+    );
+  }
+
+  void _showExitDialog(BuildContext context) {
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text("Confirm Exit"),
+        content: const Text("Are you sure you want to exit?"),
+        actions: [
+          TextButton(
+            onPressed: () {
+              Navigator.of(ctx).pop(); // يقفل الدايالوج
+            },
+            child: const Text("No"),
+          ),
+          TextButton(
+            onPressed: () {
+              SystemNavigator.pop(); // يخرج من الابلكيشن
+            },
+            child: const Text("Yes"),
+          ),
+        ],
       ),
     );
   }

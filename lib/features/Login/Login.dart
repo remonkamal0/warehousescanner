@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'dart:convert';
+import 'package:flutter/services.dart'; // 👈 مهم علشان inputFormatters
 import '../../core/constants/color_managers.dart';
 import '../Home/HomeScreen.dart';
 
@@ -131,8 +132,9 @@ class _LoginScreenState extends State<LoginScreen> {
                   padding: const EdgeInsets.symmetric(vertical: 6),
                   child: ElevatedButton(
                     style: ElevatedButton.styleFrom(
-                      backgroundColor:
-                      isSelected ? Colors.blue.shade100 : Colors.white,
+                      backgroundColor: isSelected
+                          ? Colors.blue.shade100
+                          : Colors.white,
                       foregroundColor: Colors.blue.shade900,
                       side: const BorderSide(color: Colors.blue),
                       minimumSize:
@@ -167,6 +169,15 @@ class _LoginScreenState extends State<LoginScreen> {
                 TextField(
                   controller: passwordController,
                   obscureText: true,
+                  obscuringCharacter: '•',
+                  keyboardType: const TextInputType.numberWithOptions(
+                    decimal: false,
+                    signed: false,
+                  ),
+                  inputFormatters: [
+                    FilteringTextInputFormatter.digitsOnly,
+                    // LengthLimitingTextInputFormatter(6), // 👈 لو عايز تحدد الطول (مثلاً 6 أرقام)
+                  ],
                   style: TextStyle(fontSize: isTablet ? 20 : 16),
                   decoration: InputDecoration(
                     hintText: "Password",
@@ -186,7 +197,8 @@ class _LoginScreenState extends State<LoginScreen> {
                   style: ElevatedButton.styleFrom(
                     backgroundColor: Colors.blue.shade900,
                     foregroundColor: Colors.white,
-                    minimumSize: Size(double.infinity, isTablet ? 60 : 50),
+                    minimumSize:
+                    Size(double.infinity, isTablet ? 60 : 50),
                     shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(12),
                     ),
