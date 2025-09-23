@@ -167,12 +167,12 @@ class _ScanScreenState extends State<ScanScreen> {
       if (response.statusCode == 200) {
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text("تم إرسال البيانات بنجاح ✅")),
+            const SnackBar(content: Text("The data has been sent successfully. ✅")),
           );
           Navigator.pop(context, true);
         }
       } else {
-        throw Exception("فشل الإرسال (${response.statusCode}): ${response.body}");
+        throw Exception("Transmission failed (${response.statusCode}): ${response.body}");
       }
     } catch (e) {
       if (mounted) {
