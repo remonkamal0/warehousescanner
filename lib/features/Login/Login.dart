@@ -1,8 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'dart:convert';
-import 'package:flutter/services.dart'; // 👈 مهم علشان inputFormatters
+import 'package:flutter/services.dart';
+import 'package:provider/provider.dart';
+
 import '../../core/constants/color_managers.dart';
+import '../../providers/auth_provider.dart';
 import '../Home/HomeScreen.dart';
 
 class LoginScreen extends StatefulWidget {
@@ -15,7 +18,7 @@ class LoginScreen extends StatefulWidget {
 class _LoginScreenState extends State<LoginScreen> {
   String? selectedUser;
   final TextEditingController passwordController = TextEditingController();
-  List<String> users = [];
+  List<dynamic> users = []; // ✅ هنخزن اليوزر كامل علشان ناخد userID
   bool isLoading = false;
 
   @override
@@ -28,13 +31,12 @@ class _LoginScreenState extends State<LoginScreen> {
   Future<void> fetchUsers() async {
     setState(() => isLoading = true);
     try {
-      final response =
-      await http.get(Uri.parse("http://irs.evioteg.com:8080/api/user"));
+      final response = await http.get(Uri.parse("http://irs.evioteg.com:8080/api/user"));
 
       if (response.statusCode == 200) {
         final List<dynamic> data = jsonDecode(response.body);
         setState(() {
-          users = data.map((u) => u["userName"].toString()).toList();
+          users = data;
         });
       } else {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -53,34 +55,27 @@ class _LoginScreenState extends State<LoginScreen> {
   Future<void> login() async {
     if (selectedUser != null && passwordController.text.isNotEmpty) {
       try {
-        final response =
-        await http.get(Uri.parse("http://irs.evioteg.com:8080/api/user"));
+        final user = users.firstWhere(
+              (u) =>
+          u["userName"] == selectedUser &&
+              u["loginPassWord"] == passwordController.text &&
+              u["inactive"] == 0,
+          orElse: () => null,
+        );
 
-        if (response.statusCode == 200) {
-          final List<dynamic> users = jsonDecode(response.body);
+        if (user != null) {
+          // ✅ خزن الـ userID في AuthProvider
+          final authProvider = Provider.of<AuthProvider>(context, listen: false);
+          authProvider.setUserID(user["userID"]);
 
-          final user = users.firstWhere(
-                (u) =>
-            u["userName"] == selectedUser &&
-                u["loginPassWord"] == passwordController.text &&
-                u["inactive"] == 0,
-            orElse: () => null,
+          // ✅ تسجيل دخول ناجح → روح للهوم
+          Navigator.pushReplacement(
+            context,
+            MaterialPageRoute(builder: (_) => const HomeScreen()),
           );
-
-          if (user != null) {
-            // ✅ تسجيل دخول ناجح
-            Navigator.pushReplacement(
-              context,
-              MaterialPageRoute(builder: (_) => const HomeScreen()),
-            );
-          } else {
-            ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(content: Text("Invalid username or password")),
-            );
-          }
         } else {
           ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text("Login failed: ${response.statusCode}")),
+            const SnackBar(content: Text("Invalid username or password")),
           );
         }
       } catch (e) {
@@ -126,8 +121,9 @@ class _LoginScreenState extends State<LoginScreen> {
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
               // ===== User Buttons =====
-              ...users.map((user) {
-                bool isSelected = selectedUser == user;
+              ...users.map((u) {
+                String userName = u["userName"].toString();
+                bool isSelected = selectedUser == userName;
                 return Padding(
                   padding: const EdgeInsets.symmetric(vertical: 6),
                   child: ElevatedButton(
@@ -145,11 +141,11 @@ class _LoginScreenState extends State<LoginScreen> {
                     ),
                     onPressed: () {
                       setState(() {
-                        selectedUser = user;
+                        selectedUser = userName;
                       });
                     },
                     child: Text(
-                      user,
+                      userName,
                       style: TextStyle(
                         fontWeight: FontWeight.bold,
                         fontSize: isTablet ? 20 : 16,
@@ -170,13 +166,11 @@ class _LoginScreenState extends State<LoginScreen> {
                   controller: passwordController,
                   obscureText: true,
                   obscuringCharacter: '•',
-                  keyboardType: const TextInputType.numberWithOptions(
-                    decimal: false,
-                    signed: false,
-                  ),
+                  keyboardType:
+                  const TextInputType.numberWithOptions(decimal: false, signed: false),
                   inputFormatters: [
                     FilteringTextInputFormatter.digitsOnly,
-                    // LengthLimitingTextInputFormatter(6), // 👈 لو عايز تحدد الطول (مثلاً 6 أرقام)
+                    // LengthLimitingTextInputFormatter(6),
                   ],
                   style: TextStyle(fontSize: isTablet ? 20 : 16),
                   decoration: InputDecoration(
