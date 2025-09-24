@@ -3,6 +3,12 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:http/http.dart' as http;
 
+// ✅ Provider imports
+import 'package:provider/provider.dart';
+
+import '../../providers/auth_provider.dart';
+// عدّل المسار حسب مكان الملف عندك
+
 class ReScanScreen extends StatefulWidget {
   final String soNumber;
   final String txnID;
@@ -63,8 +69,10 @@ class _ReScanScreenState extends State<ReScanScreen> {
       }
     } catch (e) {
       setState(() => isLoading = false);
-      ScaffoldMessenger.of(context)
-          .showSnackBar(SnackBar(content: Text("Error: $e")));
+      if (mounted) {
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text("Error: $e")));
+      }
     }
   }
 
@@ -137,16 +145,47 @@ class _ReScanScreenState extends State<ReScanScreen> {
     final confirm = await _showSubmitConfirmDialog();
     if (confirm != true) return;
 
+    // ✅ هات الـ userID من AuthProvider
+    final auth = context.read<AuthProvider>();
+    final userId = auth.userID;
+    if (userId == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text("⚠️ User not logged in")),
+      );
+      return;
+    }
+
+    // ✅ حدد الـ salesOrderId
+    // بنستخدم أول txnid من السطور لو متاح، وإلا نرجع لـ widget.txnID كـ fallback
+    final String salesOrderId =
+    (lines.isNotEmpty && lines.first.txnid.isNotEmpty)
+        ? lines.first.txnid
+        : widget.txnID;
+
+    // ✅ الـ API الجديد:
+    // /UpdateOrderDetailsSSC/{salesOrderId}/{UserID}
     final url =
-        "http://irs.evioteg.com:8080/api/SalesOrderLine/UpdateOrderDetailsSSC/${widget.txnID}";
+        "http://irs.evioteg.com:8080/api/SalesOrderLine/UpdateOrderDetailsSSC/"
+        "${Uri.encodeComponent(salesOrderId)}/"
+        "${Uri.encodeComponent(userId.toString())}";
 
     try {
+      // ابعت كل البنود (لو الـ API عايز المعدّل فقط، استخدم where)
       final payload = lines
           .map((l) => {
         "itemCode": l.code,
         "quantity": l.scanned + l.tempScanned,
       })
           .toList();
+
+      // لو محتاج تبعت المعدّل فقط، بدّل بالآتي:
+      // final payload = lines
+      //     .where((l) => l.tempScanned != 0)
+      //     .map((l) => {
+      //       "itemCode": l.code,
+      //       "quantity": l.scanned + l.tempScanned,
+      //     })
+      //     .toList();
 
       final response = await http.put(
         Uri.parse(url),
@@ -369,15 +408,14 @@ class _ReScanScreenState extends State<ReScanScreen> {
                       return DataRow(
                         selected: selected,
                         color: MaterialStateProperty.resolveWith<Color?>(
-                                (states) => selected
-                                ? const Color(0xFFE0ECFF)
-                                : null),
+                                (states) =>
+                            selected ? const Color(0xFFE0ECFF) : null),
                         onSelectChanged: (_) => _selectRow(i),
                         cells: [
                           DataCell(Text(line.code)),
                           DataCell(Text('${line.orderedQty}')),
-                          DataCell(Text(
-                              '${line.scanned + line.tempScanned}')),
+                          DataCell(
+                              Text('${line.scanned + line.tempScanned}')),
                           DataCell(Text(line.unit)),
                         ],
                       );
@@ -419,7 +457,8 @@ class _ReScanScreenState extends State<ReScanScreen> {
                           : 'Select a row from the table…',
                       maxLines: 2,
                       overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(fontWeight: FontWeight.w700),
+                      style:
+                      const TextStyle(fontWeight: FontWeight.w700),
                     ),
                     const SizedBox(height: 12),
                     Row(
@@ -475,14 +514,13 @@ class _ReScanScreenState extends State<ReScanScreen> {
               child: TextField(
                 controller: barcodeCtrl,
                 focusNode: _barcodeFocus,
-                autofocus: false,          // ✅ عطلنا الاوتوفوكس
+                autofocus: false, // ✅ عطلنا الاوتوفوكس
                 enableInteractiveSelection: false,
                 showCursor: false,
-                readOnly: true,            // ✅ ده اللي يقفل الكيبورد تمامًا
+                readOnly: true, // ✅ ده اللي يقفل الكيبورد تمامًا
               ),
             ),
           ),
-
         ],
       ),
     );

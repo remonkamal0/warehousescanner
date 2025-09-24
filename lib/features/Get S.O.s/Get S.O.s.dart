@@ -181,19 +181,28 @@ class _GetSOSScreenState extends State<GetSOSScreen> {
     );
   }
 
-  void _onScanPressed() {
+  /// ✅ تعديل هنا عشان يعمل refresh بعد الـ Done
+  void _onScanPressed() async {
     if (selectedIndex == null) {
       _showSnackBar("Please select an S.O first");
     } else {
-      Navigator.push(
+      final result = await Navigator.push(
         context,
         MaterialPageRoute(
           builder: (_) => ScanScreen(
             soNumber: soList[selectedIndex!].soNumber,
-            txnID: soList[selectedIndex!].txnID, // ✅ أضف txnID هنا
+            txnID: soList[selectedIndex!].txnID,
           ),
         ),
       );
+
+      // ✅ لو رجع true من ScanScreen، نعمل refresh للقائمة
+      if (result == true) {
+        setState(() {
+          isLoading = true; // Optional: عرض loader أثناء التحميل
+        });
+        await fetchSalesOrders();
+      }
     }
   }
 }

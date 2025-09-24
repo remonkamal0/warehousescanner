@@ -1,6 +1,6 @@
 import 'dart:convert';
 import 'package:flutter/material.dart';
-import 'package:provider/provider.dart'; // ✅ مهم علشان تقدر توصل للـ AuthProvider
+import 'package:provider/provider.dart'; // ✅ مهم علشان توصل للـ AuthProvider
 import 'package:http/http.dart' as http;
 import 'package:warehousescanner/features/Get%20S.O.s/widgets/sales_order_card.dart';
 
@@ -23,7 +23,7 @@ class _ReScanSOSScreenState extends State<ReScanSOSScreen> {
   /// ✅ API Call
   Future<void> fetchSalesOrders() async {
     final userID =
-        Provider.of<AuthProvider>(context, listen: false).userID; // جبت الـ userID
+        Provider.of<AuthProvider>(context, listen: false).userID;
 
     if (userID == null) {
       _showSnackBar("User ID not found, please login again.");
@@ -193,11 +193,12 @@ class _ReScanSOSScreenState extends State<ReScanSOSScreen> {
     );
   }
 
-  void _onScanPressed() {
+  /// ✅ تم التعديل هنا
+  void _onScanPressed() async {
     if (selectedIndex == null) {
       _showSnackBar("Please select an S.O first");
     } else {
-      Navigator.push(
+      final result = await Navigator.push(
         context,
         MaterialPageRoute(
           builder: (_) => ReScanScreen(
@@ -206,6 +207,14 @@ class _ReScanSOSScreenState extends State<ReScanSOSScreen> {
           ),
         ),
       );
+
+      // ✅ لو رجعنا true من ReScanScreen نعمل refresh
+      if (result == true) {
+        setState(() {
+          isLoading = true; // عرض loader أثناء التحميل
+        });
+        await fetchSalesOrders();
+      }
     }
   }
 }

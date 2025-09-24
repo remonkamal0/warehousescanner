@@ -3,6 +3,8 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:http/http.dart' as http;
+import 'package:provider/provider.dart';
+import '../../providers/auth_provider.dart';
 
 class ScanScreen extends StatefulWidget {
   final String soNumber;
@@ -147,8 +149,18 @@ class _ScanScreenState extends State<ScanScreen> {
   }
 
   Future<void> _done() async {
+    final authProvider = Provider.of<AuthProvider>(context, listen: false);
+    final userID = authProvider.userID;
+
+    if (userID == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text("⚠️ User not logged in")),
+      );
+      return;
+    }
+
     final url =
-        "http://irs.evioteg.com:8080/api/SalesOrderLine/UpdateOrderDetailsFSC/${widget.txnID}";
+        "http://irs.evioteg.com:8080/api/SalesOrderLine/UpdateOrderDetailsFSC/${widget.txnID}/$userID";
 
     try {
       final payload = lines
@@ -167,12 +179,14 @@ class _ScanScreenState extends State<ScanScreen> {
       if (response.statusCode == 200) {
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text("The data has been sent successfully. ✅")),
+            const SnackBar(
+                content: Text("The data has been sent successfully. ✅")),
           );
           Navigator.pop(context, true);
         }
       } else {
-        throw Exception("Transmission failed (${response.statusCode}): ${response.body}");
+        throw Exception(
+            "Transmission failed (${response.statusCode}): ${response.body}");
       }
     } catch (e) {
       if (mounted) {
@@ -602,12 +616,11 @@ class _SoLine {
       orderedQty: (json['orderdQty'] as num?)?.toInt() ??
           (json['orderedQty'] as num?)?.toInt() ??
           0,
-      rate: (json['rate'] as num?)?.toDouble() ?? 0.0,
+      rate: (json['rate'] as num?)?.toDouble() ?? 0,
+      unit: json['unit']?.toString() ?? 'PCS',
       scanned: first,
       tempScanned: second,
-      barcodes: (json['barcodes'] as List<dynamic>?)
-          ?.map((e) => e.toString())
-          .toList() ??
+      barcodes: (json['barcodes'] as List?)?.map((e) => e.toString()).toList() ??
           [],
     );
   }
