@@ -80,20 +80,21 @@ class _ScanScreenState extends State<ScanScreen> {
   void _incQty() {
     if (selectedLine == null) return;
     final next = qty + 1;
-    final totalIfNext =
-        selectedLine!.scanned + selectedLine!.tempScanned + next;
+    final totalIfNext = selectedLine!.scanned + selectedLine!.tempScanned + next;
 
     if (totalIfNext > selectedLine!.orderedQty) {
       _showOverDialog(
         selectedLine!.orderedQty,
         selectedLine!.scanned + selectedLine!.tempScanned,
-        1,
+        next, // ✅ ابعت الكمية الجديدة اللي بتحاول تضيفها
       );
     }
 
     qty = next;
     setState(() {});
   }
+
+
 
   void _decQty() {
     if (selectedLine == null) return;
@@ -238,24 +239,29 @@ class _ScanScreenState extends State<ScanScreen> {
     }
   }
 
-  Future<void> _showOverDialog(
-      int ordered, int current, int added) {
+  Future<void> _showOverDialog(int ordered, int current, int adding) {
     return showDialog<void>(
       context: context,
       barrierDismissible: true,
       builder: (_) => AlertDialog(
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
         title: const Text(
-          'Qty Over Warning',
+          'Qty is Over',
           style: TextStyle(fontWeight: FontWeight.bold),
-        ),
-        content: Text(
-          'Ordered Qty: $ordered\n'
-              'Current Qty: $current\n'
-              'Trying to Add: $added\n\n'
-              '⚠️ This will exceed the ordered quantity!',
           textAlign: TextAlign.center,
-          style: const TextStyle(fontWeight: FontWeight.w700),
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text("Ordered Qty: $ordered"),
+            Text("Current Qty: $current"),
+            Text("Trying to Add: $adding"),
+            const SizedBox(height: 8),
+            const Text(
+              "⚠️ The quantity will still be added.",
+              style: TextStyle(color: Colors.red, fontWeight: FontWeight.w600),
+            ),
+          ],
         ),
         actionsAlignment: MainAxisAlignment.center,
         actions: [
@@ -265,10 +271,7 @@ class _ScanScreenState extends State<ScanScreen> {
               shape: const StadiumBorder(),
             ),
             onPressed: () => Navigator.pop(context),
-            child: const Text(
-              'OK',
-              style: TextStyle(color: Colors.white),
-            ),
+            child: const Text('OK', style: TextStyle(color: Colors.white)),
           )
         ],
       ),
@@ -279,25 +282,27 @@ class _ScanScreenState extends State<ScanScreen> {
     final index = lines.indexWhere((line) => line.barcodes.contains(barcode));
     if (index != -1) {
       final line = lines[index];
-      final totalIfAdd = line.scanned + line.tempScanned + 1;
+      final adding = 1; // لو بعدين هتخليها أكتر من 1 غيّرها هنا
+      final totalIfAdd = line.scanned + line.tempScanned + adding;
 
       if (totalIfAdd > line.orderedQty) {
         _showOverDialog(
           line.orderedQty,
           line.scanned + line.tempScanned,
-          1,
+          adding, // ✅ مش دايماً 1
         );
       }
 
       setState(() {
         selectedIndex = index;
-        line.tempScanned += 1;
+        line.tempScanned += adding;
         qty = 0;
       });
     } else {
       _showInvalidBarcodeDialog(barcode);
     }
   }
+
 
   Future<void> _showInvalidBarcodeDialog(String barcode) {
     return showDialog<void>(
