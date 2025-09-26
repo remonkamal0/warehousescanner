@@ -30,9 +30,12 @@ class _ScanScreenState extends State<ScanScreen> {
 
   final TextEditingController qtyCtrl = TextEditingController(text: '0');
   final TextEditingController barcodeCtrl = TextEditingController();
-  final FocusNode _barcodeFocus = FocusNode();
 
-  bool _processingBarcode = false; // لحماية من المعالجة المزدوجة
+  // added focus nodes
+  final FocusNode _barcodeFocus = FocusNode();
+  final FocusNode _qtyFocus = FocusNode();
+
+  bool _processingBarcode = false;
 
   int get qty => int.tryParse(qtyCtrl.text) ?? 0;
   set qty(int v) => qtyCtrl.text = v.toString();
@@ -42,12 +45,10 @@ class _ScanScreenState extends State<ScanScreen> {
     super.initState();
     fetchLines();
 
-    // طلب الفوكس وإخفاء الكيبورد بعد فتح الشاشة
-    Future.delayed(const Duration(milliseconds: 300), () {
-      _ensureFocus();
-    });
+    // اطلب الفوكس بعد فتح الشاشة
+    Future.delayed(const Duration(milliseconds: 300), _ensureFocus);
 
-    // Listener احتياطي - يتعامل مع scanners اللي مش بتبعت Enter
+    // Listener احتياطي للتعامل مع scanners اللي مش بتبعت Enter
     barcodeCtrl.addListener(() {
       final text = barcodeCtrl.text;
       if (text.isNotEmpty) {
@@ -61,17 +62,22 @@ class _ScanScreenState extends State<ScanScreen> {
     qtyCtrl.dispose();
     barcodeCtrl.dispose();
     _barcodeFocus.dispose();
+    _qtyFocus.dispose();
     super.dispose();
   }
 
-  // يضمن إن الفوكس على الحقل ويخفي الكيبورد البرمجي
+  // فوكس على حقل الباركود + اخفاء الكيبورد
   void _ensureFocus() {
     if (!mounted) return;
+    // لو الـ qty واخد فوكس نطلعه
+    try {
+      if (_qtyFocus.hasFocus) _qtyFocus.unfocus();
+    } catch (_) {}
     FocusScope.of(context).requestFocus(_barcodeFocus);
     SystemChannels.textInput.invokeMethod('TextInput.hide');
   }
 
-  // Normalize + dedupe processing
+  // Normalize + منع المعالجة المزدوجة
   void _processBarcode(String raw) {
     if (_processingBarcode) return;
     final barcode = raw.replaceAll('\n', '').replaceAll('\r', '').trim();
@@ -81,10 +87,8 @@ class _ScanScreenState extends State<ScanScreen> {
     try {
       _applyScannedBarcode(barcode);
     } catch (e) {
-      // لو حصل حاجة غير متوقعة
       debugPrint('Error processing barcode: $e');
     } finally {
-      // نفضي الفيلد ونرجع الفوكس بعد فترة قصيرة
       barcodeCtrl.clear();
       Future.delayed(const Duration(milliseconds: 120), () {
         _ensureFocus();
@@ -104,10 +108,7 @@ class _ScanScreenState extends State<ScanScreen> {
           lines = data.map((e) => _SoLine.fromJson(e)).toList();
           isLoading = false;
         });
-        // خليه ياخد الفوكس بعد ما البيانات جاهزة
-        Future.delayed(const Duration(milliseconds: 200), () {
-          _ensureFocus();
-        });
+        Future.delayed(const Duration(milliseconds: 200), _ensureFocus);
       } else {
         throw Exception("Failed to load sales order lines");
       }
@@ -134,7 +135,7 @@ class _ScanScreenState extends State<ScanScreen> {
       _showOverDialog(
         selectedLine!.orderedQty,
         selectedLine!.scanned + selectedLine!.tempScanned,
-        next, // ✅ ابعت الكمية الجديدة اللي بتحاول تضيفها
+        next,
       );
     }
 
@@ -152,8 +153,7 @@ class _ScanScreenState extends State<ScanScreen> {
   void _onQtyChanged(String v) {
     if (selectedLine == null) return;
     final val = int.tryParse(v) ?? 0;
-    final totalIfVal =
-        selectedLine!.scanned + selectedLine!.tempScanned + val;
+    final totalIfVal = selectedLine!.scanned + selectedLine!.tempScanned + val;
 
     if (totalIfVal > selectedLine!.orderedQty) {
       _showOverDialog(
@@ -165,13 +165,13 @@ class _ScanScreenState extends State<ScanScreen> {
 
     qty = val;
     setState(() {});
+    // لا نعيد الفوكس هنا لأن المستخدم ممكن يكتب لحد ما يضغط Done
   }
 
   void _addQty() {
     if (selectedLine == null || qty == 0) return;
 
-    final totalIfAdd =
-        selectedLine!.scanned + selectedLine!.tempScanned + qty;
+    final totalIfAdd = selectedLine!.scanned + selectedLine!.tempScanned + qty;
 
     if (totalIfAdd > selectedLine!.orderedQty) {
       _showOverDialog(
@@ -185,6 +185,9 @@ class _ScanScreenState extends State<ScanScreen> {
       selectedLine!.tempScanned += qty;
       qty = 0;
     });
+
+    // بعد الإضافة رجّع الفوكس للباركود (تأخير صغير ليه علاقة بـ setState)
+    Future.delayed(const Duration(milliseconds: 70), _ensureFocus);
   }
 
   void _clearLine() {
@@ -193,6 +196,8 @@ class _ScanScreenState extends State<ScanScreen> {
       selectedLine!.tempScanned = 0;
       qty = 0;
     });
+
+    Future.delayed(const Duration(milliseconds: 70), _ensureFocus);
   }
 
   Future<void> _done() async {
@@ -328,14 +333,14 @@ class _ScanScreenState extends State<ScanScreen> {
     final index = lines.indexWhere((line) => line.barcodes.contains(barcode));
     if (index != -1) {
       final line = lines[index];
-      final adding = 1; // لو بعدين هتخليها أكتر من 1 غيّرها هنا
+      const adding = 1;
       final totalIfAdd = line.scanned + line.tempScanned + adding;
 
       if (totalIfAdd > line.orderedQty) {
         _showOverDialog(
           line.orderedQty,
           line.scanned + line.tempScanned,
-          adding, // ✅ مش دايماً 1
+          adding,
         );
       }
 
@@ -372,14 +377,9 @@ class _ScanScreenState extends State<ScanScreen> {
             ),
             onPressed: () {
               Navigator.pop(context);
-              Future.delayed(const Duration(milliseconds: 100), () {
-                _ensureFocus();
-              });
+              Future.delayed(const Duration(milliseconds: 100), _ensureFocus);
             },
-            child: const Text(
-              'OK',
-              style: TextStyle(color: Colors.white),
-            ),
+            child: const Text('OK', style: TextStyle(color: Colors.white)),
           )
         ],
       ),
@@ -402,8 +402,8 @@ class _ScanScreenState extends State<ScanScreen> {
         ),
         title: Text(
           'Scan - ${widget.soNumber}',
-          style: const TextStyle(
-              color: Colors.white, fontWeight: FontWeight.w800),
+          style:
+          const TextStyle(color: Colors.white, fontWeight: FontWeight.w800),
         ),
       ),
       body: Stack(
@@ -416,8 +416,8 @@ class _ScanScreenState extends State<ScanScreen> {
                 child: SingleChildScrollView(
                   scrollDirection: Axis.vertical,
                   child: DataTable(
-                    headingRowColor: MaterialStateProperty.all(
-                        const Color(0xFFEFEFF4)),
+                    headingRowColor:
+                    MaterialStateProperty.all(const Color(0xFFEFEFF4)),
                     columns: const [
                       DataColumn(
                           label: Text('SKU',
@@ -448,8 +448,8 @@ class _ScanScreenState extends State<ScanScreen> {
                         cells: [
                           DataCell(Text(line.code)),
                           DataCell(Text('${line.orderedQty}')),
-                          DataCell(
-                              Text('${line.scanned + line.tempScanned}')),
+                          DataCell(Text(
+                              '${line.scanned + line.tempScanned}')),
                           DataCell(Text(line.unit)),
                         ],
                       );
@@ -465,7 +465,8 @@ class _ScanScreenState extends State<ScanScreen> {
                 ),
                 decoration: const BoxDecoration(
                   color: Colors.white,
-                  border: Border(top: BorderSide(color: Color(0xFFE6E6E6))),
+                  border:
+                  Border(top: BorderSide(color: Color(0xFFE6E6E6))),
                 ),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -478,7 +479,8 @@ class _ScanScreenState extends State<ScanScreen> {
                         _chipButton('Clr Line', onTap: _clearLine),
                         _chipButton('Add', onTap: _addQty),
                         const Text('Qty:',
-                            style: TextStyle(fontWeight: FontWeight.w600)),
+                            style:
+                            TextStyle(fontWeight: FontWeight.w600)),
                         _qtyBox(isTablet: isTablet),
                       ],
                     ),
@@ -501,8 +503,7 @@ class _ScanScreenState extends State<ScanScreen> {
                               padding: const EdgeInsets.symmetric(
                                   vertical: 14),
                               shape: RoundedRectangleBorder(
-                                  borderRadius:
-                                  BorderRadius.circular(10)),
+                                  borderRadius: BorderRadius.circular(10)),
                             ),
                             child: const Text('Cancel'),
                           ),
@@ -516,8 +517,7 @@ class _ScanScreenState extends State<ScanScreen> {
                               padding: const EdgeInsets.symmetric(
                                   vertical: 14),
                               shape: RoundedRectangleBorder(
-                                  borderRadius:
-                                  BorderRadius.circular(10)),
+                                  borderRadius: BorderRadius.circular(10)),
                             ),
                             child: const Text(
                               'Done',
@@ -535,7 +535,7 @@ class _ScanScreenState extends State<ScanScreen> {
               ),
             ],
           ),
-          // TextField الباركود المخفي لكن قابل للفوكس (صغير ومطروح بره الشاشة)
+          // TextField مخفي للباركود
           Positioned(
             left: -100,
             top: -100,
@@ -548,12 +548,10 @@ class _ScanScreenState extends State<ScanScreen> {
                 autofocus: false,
                 enableInteractiveSelection: false,
                 showCursor: false,
-                readOnly: false, // لازم يكون false عشان الماسح يكتب
+                readOnly: false,
                 textInputAction: TextInputAction.done,
                 decoration: const InputDecoration.collapsed(hintText: ''),
-                onSubmitted: (v) {
-                  _processBarcode(v);
-                },
+                onSubmitted: (v) => _processBarcode(v),
               ),
             ),
           ),
@@ -598,10 +596,17 @@ class _ScanScreenState extends State<ScanScreen> {
             width: tfWidth,
             child: TextField(
               controller: qtyCtrl,
+              focusNode: _qtyFocus,
               textAlign: TextAlign.center,
               keyboardType: TextInputType.number,
+              textInputAction: TextInputAction.done,
               inputFormatters: [FilteringTextInputFormatter.digitsOnly],
               onChanged: _onQtyChanged,
+              onSubmitted: (v) {
+                // لما المستخدم يضغط Done على الـ keyboards نعتبر الإدخال انتهى
+                _onQtyChanged(v);
+                Future.delayed(const Duration(milliseconds: 70), _ensureFocus);
+              },
               style: TextStyle(
                   fontWeight: FontWeight.w700, fontSize: isTablet ? 18 : 16),
               decoration: const InputDecoration(
@@ -635,7 +640,6 @@ class _SoLine {
 
   int scanned;
   int tempScanned;
-
   List<String> barcodes;
 
   _SoLine({
