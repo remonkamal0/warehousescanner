@@ -30,7 +30,11 @@ class _LoginScreenState extends State<LoginScreen> {
 
   /// جلب المستخدمين من الـ API
   Future<void> fetchUsers() async {
-    setState(() => isLoading = true);
+    setState(() {
+      isLoading = true;
+      users = []; // ⬅ امسح اللستة مؤقتًا علشان يظهر اللودينج
+    });
+
     try {
       final response =
       await http.get(Uri.parse("http://irs.evioteg.com:8080/api/user"));
@@ -50,6 +54,7 @@ class _LoginScreenState extends State<LoginScreen> {
         SnackBar(content: Text("Error fetching users: $e")),
       );
     }
+
     setState(() => isLoading = false);
   }
 
@@ -62,7 +67,6 @@ class _LoginScreenState extends State<LoginScreen> {
         var uri = Uri.parse("http://irs.evioteg.com:8080/api/user/login");
         var request = http.MultipartRequest("POST", uri);
 
-        // ✅ ضيف الحقول زي ما الـ API طالب
         request.fields['LoginNumber'] = selectedLoginNumber!;
         request.fields['LoginPassWord'] = passwordController.text;
 
@@ -129,6 +133,13 @@ class _LoginScreenState extends State<LoginScreen> {
             fontWeight: FontWeight.bold,
           ),
         ),
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.refresh, color: Colors.white),
+            tooltip: "Refresh Users",
+            onPressed: fetchUsers, // ⬅ استدعاء الفانكشن
+          ),
+        ],
       ),
       backgroundColor: Colors.white,
       body: Center(
@@ -151,12 +162,12 @@ class _LoginScreenState extends State<LoginScreen> {
                   padding: const EdgeInsets.symmetric(vertical: 6),
                   child: ElevatedButton(
                     style: ElevatedButton.styleFrom(
-                      backgroundColor:
-                      isSelected ? Colors.blue.shade100 : Colors.white,
+                      backgroundColor: isSelected
+                          ? Colors.blue.shade100
+                          : Colors.white,
                       foregroundColor: Colors.blue.shade900,
                       side: const BorderSide(color: Colors.blue),
-                      minimumSize:
-                      Size(double.infinity, isTablet ? 60 : 50),
+                      minimumSize: Size(double.infinity, isTablet ? 60 : 50),
                       shape: RoundedRectangleBorder(
                         borderRadius: BorderRadius.circular(10),
                       ),
@@ -213,8 +224,7 @@ class _LoginScreenState extends State<LoginScreen> {
                   style: ElevatedButton.styleFrom(
                     backgroundColor: Colors.blue.shade900,
                     foregroundColor: Colors.white,
-                    minimumSize:
-                    Size(double.infinity, isTablet ? 60 : 50),
+                    minimumSize: Size(double.infinity, isTablet ? 60 : 50),
                     shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(12),
                     ),
