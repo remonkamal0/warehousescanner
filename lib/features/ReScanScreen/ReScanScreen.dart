@@ -38,12 +38,21 @@ class _ReScanScreenState extends State<ReScanScreen> {
   int get qty => int.tryParse(qtyCtrl.text) ?? 0;
   set qty(int v) => qtyCtrl.text = v.toString();
 
+  // ✅ وظيفة تضمن الفوكس وتخفي الكيبورد الناعم
+  void _ensureBarcodeFocus() {
+    if (!_barcodeFocus.hasFocus) {
+      FocusScope.of(context).requestFocus(_barcodeFocus);
+    }
+    // اخفي الكيبورد الناعم (H/W scanner هيكتب عادي)
+    SystemChannels.textInput.invokeMethod('TextInput.hide');
+  }
+
   @override
   void initState() {
     super.initState();
     fetchLines();
 
-    // Listener للباركود
+    // Listener للباركود (لو السكانر ميبعتش Enter – هيفضل شغّال)
     barcodeCtrl.addListener(() {
       final barcode = barcodeCtrl.text.trim();
       if (barcode.isNotEmpty) {
@@ -51,6 +60,9 @@ class _ReScanScreenState extends State<ReScanScreen> {
         barcodeCtrl.clear();
       }
     });
+
+    // اطلب الفوكس أول ما الشاشة ترندر
+    WidgetsBinding.instance.addPostFrameCallback((_) => _ensureBarcodeFocus());
   }
 
   Future<void> fetchLines() async {
@@ -64,6 +76,8 @@ class _ReScanScreenState extends State<ReScanScreen> {
           lines = data.map((e) => _SoLine.fromJson(e)).toList();
           isLoading = false;
         });
+        // بعد تحميل البيانات ضمن الفوكس
+        _ensureBarcodeFocus();
       } else {
         throw Exception("Failed to load sales order lines");
       }
@@ -73,6 +87,8 @@ class _ReScanScreenState extends State<ReScanScreen> {
         ScaffoldMessenger.of(context)
             .showSnackBar(SnackBar(content: Text("Error: $e")));
       }
+      // حتى لو حصل خطأ، رجّع الفوكس
+      _ensureBarcodeFocus();
     }
   }
 
@@ -81,6 +97,7 @@ class _ReScanScreenState extends State<ReScanScreen> {
       selectedIndex = index;
       qty = 0;
     });
+    _ensureBarcodeFocus();
   }
 
   void _incQty() {
@@ -97,6 +114,7 @@ class _ReScanScreenState extends State<ReScanScreen> {
         adding: next,
       );
     }
+    _ensureBarcodeFocus();
   }
 
   void _decQty() {
@@ -104,6 +122,7 @@ class _ReScanScreenState extends State<ReScanScreen> {
     final next = (qty - 1).clamp(0, 1 << 31);
     qty = next;
     setState(() {});
+    _ensureBarcodeFocus();
   }
 
   void _onQtyChanged(String v) {
@@ -112,6 +131,7 @@ class _ReScanScreenState extends State<ReScanScreen> {
     if (val < 0) {
       qty = 0;
       setState(() {});
+      _ensureBarcodeFocus();
       return;
     }
     setState(() {});
@@ -123,6 +143,7 @@ class _ReScanScreenState extends State<ReScanScreen> {
         adding: val,
       );
     }
+    _ensureBarcodeFocus();
   }
 
   void _addQty() {
@@ -131,6 +152,7 @@ class _ReScanScreenState extends State<ReScanScreen> {
       selectedLine!.tempScanned += qty;
       qty = 0;
     });
+    _ensureBarcodeFocus();
   }
 
   void _clearLine() {
@@ -139,11 +161,15 @@ class _ReScanScreenState extends State<ReScanScreen> {
       selectedLine!.tempScanned = 0;
       qty = 0;
     });
+    _ensureBarcodeFocus();
   }
 
   Future<void> _done() async {
     final confirm = await _showSubmitConfirmDialog();
-    if (confirm != true) return;
+    if (confirm != true) {
+      _ensureBarcodeFocus();
+      return;
+    }
 
     // ✅ هات الـ userID من AuthProvider
     final auth = context.read<AuthProvider>();
@@ -152,11 +178,11 @@ class _ReScanScreenState extends State<ReScanScreen> {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text("⚠️ User not logged in")),
       );
+      _ensureBarcodeFocus();
       return;
     }
 
     // ✅ حدد الـ salesOrderId
-    // بنستخدم أول txnid من السطور لو متاح، وإلا نرجع لـ widget.txnID كـ fallback
     final String salesOrderId =
     (lines.isNotEmpty && lines.first.txnid.isNotEmpty)
         ? lines.first.txnid
@@ -178,15 +204,6 @@ class _ReScanScreenState extends State<ReScanScreen> {
       })
           .toList();
 
-      // لو محتاج تبعت المعدّل فقط، بدّل بالآتي:
-      // final payload = lines
-      //     .where((l) => l.tempScanned != 0)
-      //     .map((l) => {
-      //       "itemCode": l.code,
-      //       "quantity": l.scanned + l.tempScanned,
-      //     })
-      //     .toList();
-
       final response = await http.put(
         Uri.parse(url),
         headers: {"Content-Type": "application/json"},
@@ -196,8 +213,7 @@ class _ReScanScreenState extends State<ReScanScreen> {
       if (response.statusCode == 200) {
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-                content: Text("The data has been sent successfully.✅")),
+            const SnackBar(content: Text("The data has been sent successfully.✅")),
           );
           Navigator.pop(context, true);
         }
@@ -211,6 +227,8 @@ class _ReScanScreenState extends State<ReScanScreen> {
           SnackBar(content: Text("Error: $e")),
         );
       }
+    } finally {
+      _ensureBarcodeFocus();
     }
   }
 
@@ -249,7 +267,10 @@ class _ReScanScreenState extends State<ReScanScreen> {
               backgroundColor: const Color(0xFF27AE60),
               shape: const StadiumBorder(),
             ),
-            onPressed: () => Navigator.pop(context),
+            onPressed: () {
+              Navigator.pop(context);
+              Future.delayed(const Duration(milliseconds: 50), _ensureBarcodeFocus);
+            },
             child: const Text('OK', style: TextStyle(color: Colors.white)),
           )
         ],
@@ -280,9 +301,7 @@ class _ReScanScreenState extends State<ReScanScreen> {
             ),
             onPressed: () {
               Navigator.pop(context);
-              Future.delayed(const Duration(milliseconds: 100), () {
-                FocusScope.of(context).requestFocus(_barcodeFocus);
-              });
+              Future.delayed(const Duration(milliseconds: 50), _ensureBarcodeFocus);
             },
             child: const Text(
               'OK',
@@ -315,7 +334,10 @@ class _ReScanScreenState extends State<ReScanScreen> {
               backgroundColor: Colors.grey,
               shape: const StadiumBorder(),
             ),
-            onPressed: () => Navigator.pop(context, false),
+            onPressed: () {
+              Navigator.pop(context, false);
+              Future.delayed(const Duration(milliseconds: 50), _ensureBarcodeFocus);
+            },
             child: const Text('No', style: TextStyle(color: Colors.white)),
           ),
           ElevatedButton(
@@ -323,7 +345,10 @@ class _ReScanScreenState extends State<ReScanScreen> {
               backgroundColor: Color(0xFF2F76D2),
               shape: const StadiumBorder(),
             ),
-            onPressed: () => Navigator.pop(context, true),
+            onPressed: () {
+              Navigator.pop(context, true);
+              // الفوكس بيرجع برضه في finally بتاعة _done
+            },
             child: const Text('Yes', style: TextStyle(color: Colors.white)),
           ),
         ],
@@ -350,6 +375,7 @@ class _ReScanScreenState extends State<ReScanScreen> {
     } else {
       _showInvalidBarcodeDialog(barcode);
     }
+    _ensureBarcodeFocus();
   }
 
   @override
@@ -357,171 +383,172 @@ class _ReScanScreenState extends State<ReScanScreen> {
     final size = MediaQuery.of(context).size;
     final isTablet = size.width >= 600;
 
-    return Scaffold(
-      backgroundColor: Colors.white,
-      appBar: AppBar(
-        backgroundColor: const Color(0xFF27AE60),
-        centerTitle: true,
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back, color: Colors.white),
-          onPressed: () => Navigator.pop(context),
+    return GestureDetector(
+      behavior: HitTestBehavior.translucent,
+      onTap: _ensureBarcodeFocus, // رجّع الفوكس لو حد لمس الشاشة
+      child: Scaffold(
+        backgroundColor: Colors.white,
+        appBar: AppBar(
+          backgroundColor: const Color(0xFF27AE60),
+          centerTitle: true,
+          leading: IconButton(
+            icon: const Icon(Icons.arrow_back, color: Colors.white),
+            onPressed: () => Navigator.pop(context),
+          ),
+          title: Text(
+            'ReScan - ${widget.soNumber}',
+            style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w800),
+          ),
         ),
-        title: Text(
-          'ReScan - ${widget.soNumber}',
-          style:
-          const TextStyle(color: Colors.white, fontWeight: FontWeight.w800),
-        ),
-      ),
-      body: Stack(
-        children: [
-          isLoading
-              ? const Center(child: CircularProgressIndicator())
-              : Column(
-            children: [
-              Expanded(
-                child: SingleChildScrollView(
-                  scrollDirection: Axis.vertical,
-                  child: DataTable(
-                    headingRowColor: MaterialStateProperty.all(
-                        const Color(0xFFEFEFF4)),
-                    columns: const [
-                      DataColumn(
-                          label: Text('SKU',
-                              style:
-                              TextStyle(fontWeight: FontWeight.w700))),
-                      DataColumn(
-                          label: Text('SOQ',
-                              style:
-                              TextStyle(fontWeight: FontWeight.w700))),
-                      DataColumn(
-                          label: Text('Sc',
-                              style:
-                              TextStyle(fontWeight: FontWeight.w700))),
-                      DataColumn(
-                          label: Text('U/M',
-                              style:
-                              TextStyle(fontWeight: FontWeight.w700))),
-                    ],
-                    rows: List.generate(lines.length, (i) {
-                      final line = lines[i];
-                      final selected = i == selectedIndex;
-                      return DataRow(
-                        selected: selected,
-                        color: MaterialStateProperty.resolveWith<Color?>(
-                                (states) =>
-                            selected ? const Color(0xFFE0ECFF) : null),
-                        onSelectChanged: (_) => _selectRow(i),
-                        cells: [
-                          DataCell(Text(line.code)),
-                          DataCell(Text('${line.orderedQty}')),
-                          DataCell(
-                              Text('${line.scanned + line.tempScanned}')),
-                          DataCell(Text(line.unit)),
-                        ],
-                      );
-                    }),
+        body: Stack(
+          children: [
+            isLoading
+                ? const Center(child: CircularProgressIndicator())
+                : Column(
+              children: [
+                Expanded(
+                  child: SingleChildScrollView(
+                    scrollDirection: Axis.vertical,
+                    child: DataTable(
+                      headingRowColor:
+                      MaterialStateProperty.all(const Color(0xFFEFEFF4)),
+                      columns: const [
+                        DataColumn(
+                            label: Text('SKU',
+                                style: TextStyle(fontWeight: FontWeight.w700))),
+                        DataColumn(
+                            label: Text('SOQ',
+                                style: TextStyle(fontWeight: FontWeight.w700))),
+                        DataColumn(
+                            label: Text('Sc',
+                                style: TextStyle(fontWeight: FontWeight.w700))),
+                        DataColumn(
+                            label: Text('U/M',
+                                style: TextStyle(fontWeight: FontWeight.w700))),
+                      ],
+                      rows: List.generate(lines.length, (i) {
+                        final line = lines[i];
+                        final selected = i == selectedIndex;
+                        return DataRow(
+                          selected: selected,
+                          color: MaterialStateProperty.resolveWith<Color?>(
+                                  (states) =>
+                              selected ? const Color(0xFFE0ECFF) : null),
+                          onSelectChanged: (_) => _selectRow(i),
+                          cells: [
+                            DataCell(Text(line.code)),
+                            DataCell(Text('${line.orderedQty}')),
+                            DataCell(Text('${line.scanned + line.tempScanned}')),
+                            DataCell(Text(line.unit)),
+                          ],
+                        );
+                      }),
+                    ),
                   ),
                 ),
-              ),
-              Container(
-                width: double.infinity,
-                padding: EdgeInsets.symmetric(
-                  horizontal: isTablet ? size.width * 0.06 : 16,
-                  vertical: 14,
-                ),
-                decoration: const BoxDecoration(
-                  color: Colors.white,
-                  border:
-                  Border(top: BorderSide(color: Color(0xFFE6E6E6))),
-                ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Wrap(
-                      spacing: 10,
-                      runSpacing: 10,
-                      crossAxisAlignment: WrapCrossAlignment.center,
-                      children: [
-                        _chipButton('Clr Line', onTap: _clearLine),
-                        _chipButton('Add', onTap: _addQty),
-                        const Text('Qty:',
-                            style:
-                            TextStyle(fontWeight: FontWeight.w600)),
-                        _qtyBox(isTablet: isTablet),
-                      ],
-                    ),
-                    const SizedBox(height: 10),
-                    Text(
-                      selectedLine != null
-                          ? '${selectedLine!.desc}'
-                          : 'Select a row from the table…',
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
-                      style:
-                      const TextStyle(fontWeight: FontWeight.w700),
-                    ),
-                    const SizedBox(height: 12),
-                    Row(
-                      children: [
-                        Expanded(
-                          child: OutlinedButton(
-                            onPressed: () => Navigator.pop(context),
-                            style: OutlinedButton.styleFrom(
-                              padding: const EdgeInsets.symmetric(
-                                  vertical: 14),
-                              shape: RoundedRectangleBorder(
-                                  borderRadius:
-                                  BorderRadius.circular(10)),
-                            ),
-                            child: const Text('Cancel'),
-                          ),
-                        ),
-                        const SizedBox(width: 12),
-                        Expanded(
-                          child: ElevatedButton(
-                            onPressed: _done,
-                            style: ElevatedButton.styleFrom(
-                              backgroundColor: const Color(0xFF27AE60),
-                              padding: const EdgeInsets.symmetric(
-                                  vertical: 14),
-                              shape: RoundedRectangleBorder(
-                                  borderRadius:
-                                  BorderRadius.circular(10)),
-                            ),
-                            child: const Text(
-                              'Done',
-                              style: TextStyle(
-                                  color: Colors.white,
-                                  fontWeight: FontWeight.w700),
+                Container(
+                  width: double.infinity,
+                  padding: EdgeInsets.symmetric(
+                    horizontal: isTablet ? size.width * 0.06 : 16,
+                    vertical: 14,
+                  ),
+                  decoration: const BoxDecoration(
+                    color: Colors.white,
+                    border: Border(top: BorderSide(color: Color(0xFFE6E6E6))),
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Wrap(
+                        spacing: 10,
+                        runSpacing: 10,
+                        crossAxisAlignment: WrapCrossAlignment.center,
+                        children: [
+                          _chipButton('Clr Line', onTap: _clearLine),
+                          _chipButton('Add', onTap: _addQty),
+                          const Text('Qty:',
+                              style: TextStyle(fontWeight: FontWeight.w600)),
+                          _qtyBox(isTablet: isTablet),
+                        ],
+                      ),
+                      const SizedBox(height: 10),
+                      Text(
+                        selectedLine != null
+                            ? '${selectedLine!.desc}'
+                            : 'Select a row from the table…',
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(fontWeight: FontWeight.w700),
+                      ),
+                      const SizedBox(height: 12),
+                      Row(
+                        children: [
+                          Expanded(
+                            child: OutlinedButton(
+                              onPressed: () => Navigator.pop(context),
+                              style: OutlinedButton.styleFrom(
+                                padding:
+                                const EdgeInsets.symmetric(vertical: 14),
+                                shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(10)),
+                              ),
+                              child: const Text('Cancel'),
                             ),
                           ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 50)
-                  ],
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: ElevatedButton(
+                              onPressed: _done,
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: const Color(0xFF27AE60),
+                                padding:
+                                const EdgeInsets.symmetric(vertical: 14),
+                                shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(10)),
+                              ),
+                              child: const Text(
+                                'Done',
+                                style: TextStyle(
+                                    color: Colors.white,
+                                    fontWeight: FontWeight.w700),
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 50)
+                    ],
+                  ),
                 ),
-              ),
-            ],
-          ),
-          // TextField مخفي للباركود
-          Positioned(
-            left: 0,
-            top: 0,
-            child: SizedBox(
-              width: 0,
-              height: 0,
-              child: TextField(
-                controller: barcodeCtrl,
-                focusNode: _barcodeFocus,
-                autofocus: false, // ✅ عطلنا الاوتوفوكس
-                enableInteractiveSelection: false,
-                showCursor: false,
-                readOnly: true, // ✅ ده اللي يقفل الكيبورد تمامًا
+              ],
+            ),
+            // TextField مخفي للباركود (قابل للكتابة للسكانر + بدون كيبورد ناعم)
+            Positioned(
+              left: 0,
+              top: 0,
+              child: SizedBox(
+                width: 1,
+                height: 1,
+                child: TextField(
+                  controller: barcodeCtrl,
+                  focusNode: _barcodeFocus,
+                  autofocus: true,                  // ✅ يطلب الفوكس تلقائيًا
+                  enableInteractiveSelection: false,
+                  showCursor: false,
+                  keyboardType: TextInputType.text,
+                  textInputAction: TextInputAction.done,
+                  onSubmitted: (val) {              // ✅ لو السكانر بيبعت Enter
+                    final s = val.trim();
+                    if (s.isEmpty) return;
+                    _applyScannedBarcode(s);
+                    barcodeCtrl.clear();
+                    _ensureBarcodeFocus();
+                  },
+                ),
               ),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }
@@ -567,8 +594,7 @@ class _ReScanScreenState extends State<ReScanScreen> {
               inputFormatters: [FilteringTextInputFormatter.digitsOnly],
               onChanged: _onQtyChanged,
               style: TextStyle(
-                  fontWeight: FontWeight.w700,
-                  fontSize: isTablet ? 18 : 16),
+                  fontWeight: FontWeight.w700, fontSize: isTablet ? 18 : 16),
               decoration: const InputDecoration(
                 isDense: true,
                 border: InputBorder.none,

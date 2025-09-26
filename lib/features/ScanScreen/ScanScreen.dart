@@ -32,6 +32,8 @@ class _ScanScreenState extends State<ScanScreen> {
   final TextEditingController barcodeCtrl = TextEditingController();
   final FocusNode _barcodeFocus = FocusNode();
 
+  bool _processingBarcode = false; // لحماية من المعالجة المزدوجة
+
   int get qty => int.tryParse(qtyCtrl.text) ?? 0;
   set qty(int v) => qtyCtrl.text = v.toString();
 
@@ -40,13 +42,55 @@ class _ScanScreenState extends State<ScanScreen> {
     super.initState();
     fetchLines();
 
+    // طلب الفوكس وإخفاء الكيبورد بعد فتح الشاشة
+    Future.delayed(const Duration(milliseconds: 300), () {
+      _ensureFocus();
+    });
+
+    // Listener احتياطي - يتعامل مع scanners اللي مش بتبعت Enter
     barcodeCtrl.addListener(() {
-      final barcode = barcodeCtrl.text.trim();
-      if (barcode.isNotEmpty) {
-        _applyScannedBarcode(barcode);
-        barcodeCtrl.clear();
+      final text = barcodeCtrl.text;
+      if (text.isNotEmpty) {
+        _processBarcode(text);
       }
     });
+  }
+
+  @override
+  void dispose() {
+    qtyCtrl.dispose();
+    barcodeCtrl.dispose();
+    _barcodeFocus.dispose();
+    super.dispose();
+  }
+
+  // يضمن إن الفوكس على الحقل ويخفي الكيبورد البرمجي
+  void _ensureFocus() {
+    if (!mounted) return;
+    FocusScope.of(context).requestFocus(_barcodeFocus);
+    SystemChannels.textInput.invokeMethod('TextInput.hide');
+  }
+
+  // Normalize + dedupe processing
+  void _processBarcode(String raw) {
+    if (_processingBarcode) return;
+    final barcode = raw.replaceAll('\n', '').replaceAll('\r', '').trim();
+    if (barcode.isEmpty) return;
+
+    _processingBarcode = true;
+    try {
+      _applyScannedBarcode(barcode);
+    } catch (e) {
+      // لو حصل حاجة غير متوقعة
+      debugPrint('Error processing barcode: $e');
+    } finally {
+      // نفضي الفيلد ونرجع الفوكس بعد فترة قصيرة
+      barcodeCtrl.clear();
+      Future.delayed(const Duration(milliseconds: 120), () {
+        _ensureFocus();
+        _processingBarcode = false;
+      });
+    }
   }
 
   Future<void> fetchLines() async {
@@ -59,6 +103,10 @@ class _ScanScreenState extends State<ScanScreen> {
         setState(() {
           lines = data.map((e) => _SoLine.fromJson(e)).toList();
           isLoading = false;
+        });
+        // خليه ياخد الفوكس بعد ما البيانات جاهزة
+        Future.delayed(const Duration(milliseconds: 200), () {
+          _ensureFocus();
         });
       } else {
         throw Exception("Failed to load sales order lines");
@@ -93,8 +141,6 @@ class _ScanScreenState extends State<ScanScreen> {
     qty = next;
     setState(() {});
   }
-
-
 
   void _decQty() {
     if (selectedLine == null) return;
@@ -303,7 +349,6 @@ class _ScanScreenState extends State<ScanScreen> {
     }
   }
 
-
   Future<void> _showInvalidBarcodeDialog(String barcode) {
     return showDialog<void>(
       context: context,
@@ -328,7 +373,7 @@ class _ScanScreenState extends State<ScanScreen> {
             onPressed: () {
               Navigator.pop(context);
               Future.delayed(const Duration(milliseconds: 100), () {
-                FocusScope.of(context).requestFocus(_barcodeFocus);
+                _ensureFocus();
               });
             },
             child: const Text(
@@ -371,8 +416,8 @@ class _ScanScreenState extends State<ScanScreen> {
                 child: SingleChildScrollView(
                   scrollDirection: Axis.vertical,
                   child: DataTable(
-                    headingRowColor:
-                    MaterialStateProperty.all(const Color(0xFFEFEFF4)),
+                    headingRowColor: MaterialStateProperty.all(
+                        const Color(0xFFEFEFF4)),
                     columns: const [
                       DataColumn(
                           label: Text('SKU',
@@ -397,9 +442,8 @@ class _ScanScreenState extends State<ScanScreen> {
                       return DataRow(
                         selected: selected,
                         color: MaterialStateProperty.resolveWith<Color?>(
-                                (states) => selected
-                                ? const Color(0xFFE0ECFF)
-                                : null),
+                                (states) =>
+                            selected ? const Color(0xFFE0ECFF) : null),
                         onSelectChanged: (_) => _selectRow(i),
                         cells: [
                           DataCell(Text(line.code)),
@@ -421,8 +465,7 @@ class _ScanScreenState extends State<ScanScreen> {
                 ),
                 decoration: const BoxDecoration(
                   color: Colors.white,
-                  border:
-                  Border(top: BorderSide(color: Color(0xFFE6E6E6))),
+                  border: Border(top: BorderSide(color: Color(0xFFE6E6E6))),
                 ),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -435,8 +478,7 @@ class _ScanScreenState extends State<ScanScreen> {
                         _chipButton('Clr Line', onTap: _clearLine),
                         _chipButton('Add', onTap: _addQty),
                         const Text('Qty:',
-                            style:
-                            TextStyle(fontWeight: FontWeight.w600)),
+                            style: TextStyle(fontWeight: FontWeight.w600)),
                         _qtyBox(isTablet: isTablet),
                       ],
                     ),
@@ -447,8 +489,7 @@ class _ScanScreenState extends State<ScanScreen> {
                           : 'Select a row from the table…',
                       maxLines: 2,
                       overflow: TextOverflow.ellipsis,
-                      style:
-                      const TextStyle(fontWeight: FontWeight.w700),
+                      style: const TextStyle(fontWeight: FontWeight.w700),
                     ),
                     const SizedBox(height: 12),
                     Row(
@@ -494,20 +535,25 @@ class _ScanScreenState extends State<ScanScreen> {
               ),
             ],
           ),
-          // ✅ TextField الباركود المخفي من غير كيبورد
+          // TextField الباركود المخفي لكن قابل للفوكس (صغير ومطروح بره الشاشة)
           Positioned(
-            left: 0,
-            top: 0,
+            left: -100,
+            top: -100,
             child: SizedBox(
-              width: 0,
-              height: 0,
+              width: 1,
+              height: 1,
               child: TextField(
                 controller: barcodeCtrl,
                 focusNode: _barcodeFocus,
                 autofocus: false,
                 enableInteractiveSelection: false,
                 showCursor: false,
-                readOnly: true,
+                readOnly: false, // لازم يكون false عشان الماسح يكتب
+                textInputAction: TextInputAction.done,
+                decoration: const InputDecoration.collapsed(hintText: ''),
+                onSubmitted: (v) {
+                  _processBarcode(v);
+                },
               ),
             ),
           ),
@@ -557,8 +603,7 @@ class _ScanScreenState extends State<ScanScreen> {
               inputFormatters: [FilteringTextInputFormatter.digitsOnly],
               onChanged: _onQtyChanged,
               style: TextStyle(
-                  fontWeight: FontWeight.w700,
-                  fontSize: isTablet ? 18 : 16),
+                  fontWeight: FontWeight.w700, fontSize: isTablet ? 18 : 16),
               decoration: const InputDecoration(
                 isDense: true,
                 border: InputBorder.none,
@@ -625,8 +670,8 @@ class _SoLine {
       unit: json['unit']?.toString() ?? 'PCS',
       scanned: first,
       tempScanned: second,
-      barcodes: (json['barcodes'] as List?)?.map((e) => e.toString()).toList() ??
-          [],
+      barcodes:
+      (json['barcodes'] as List?)?.map((e) => e.toString()).toList() ?? [],
     );
   }
 }
