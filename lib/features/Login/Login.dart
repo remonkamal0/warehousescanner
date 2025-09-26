@@ -16,9 +16,10 @@ class LoginScreen extends StatefulWidget {
 }
 
 class _LoginScreenState extends State<LoginScreen> {
-  String? selectedUser;
+  String? selectedLoginNumber;
+  String? selectedUserName;
   final TextEditingController passwordController = TextEditingController();
-  List<dynamic> users = []; // ✅ هنخزن اليوزر كامل علشان ناخد userID
+  List<dynamic> users = [];
   bool isLoading = false;
 
   @override
@@ -31,7 +32,8 @@ class _LoginScreenState extends State<LoginScreen> {
   Future<void> fetchUsers() async {
     setState(() => isLoading = true);
     try {
-      final response = await http.get(Uri.parse("http://irs.evioteg.com:8080/api/user"));
+      final response =
+      await http.get(Uri.parse("http://irs.evioteg.com:8080/api/user"));
 
       if (response.statusCode == 200) {
         final List<dynamic> data = jsonDecode(response.body);
@@ -51,31 +53,49 @@ class _LoginScreenState extends State<LoginScreen> {
     setState(() => isLoading = false);
   }
 
-  /// تسجيل الدخول
+  /// تسجيل الدخول - باستخدام multipart/form-data
   Future<void> login() async {
-    if (selectedUser != null && passwordController.text.isNotEmpty) {
+    if (selectedLoginNumber != null && passwordController.text.isNotEmpty) {
+      setState(() => isLoading = true);
+
       try {
-        final user = users.firstWhere(
-              (u) =>
-          u["userName"] == selectedUser &&
-              u["loginPassWord"] == passwordController.text &&
-              u["inactive"] == 0,
-          orElse: () => null,
-        );
+        var uri = Uri.parse("http://irs.evioteg.com:8080/api/user/login");
+        var request = http.MultipartRequest("POST", uri);
 
-        if (user != null) {
-          // ✅ خزن الـ userID في AuthProvider
-          final authProvider = Provider.of<AuthProvider>(context, listen: false);
-          authProvider.setUserID(user["userID"]);
+        // ✅ ضيف الحقول زي ما الـ API طالب
+        request.fields['LoginNumber'] = selectedLoginNumber!;
+        request.fields['LoginPassWord'] = passwordController.text;
 
-          // ✅ تسجيل دخول ناجح → روح للهوم
-          Navigator.pushReplacement(
-            context,
-            MaterialPageRoute(builder: (_) => const HomeScreen()),
-          );
+        var streamedResponse = await request.send();
+        var response = await http.Response.fromStream(streamedResponse);
+
+        if (response.statusCode == 200) {
+          final data = jsonDecode(response.body);
+
+          if (data != null && data["userID"] != null) {
+            final authProvider =
+            Provider.of<AuthProvider>(context, listen: false);
+            authProvider.setUserID(data["userID"]);
+
+            Navigator.pushReplacement(
+              context,
+              MaterialPageRoute(builder: (_) => const HomeScreen()),
+            );
+          } else {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(content: Text("Login failed: invalid response")),
+            );
+          }
         } else {
+          String errorMsg;
+          try {
+            final errorData = jsonDecode(response.body);
+            errorMsg = errorData["message"] ?? "Login failed";
+          } catch (_) {
+            errorMsg = "Login failed: ${response.statusCode}";
+          }
           ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text("Invalid username or password")),
+            SnackBar(content: Text(errorMsg)),
           );
         }
       } catch (e) {
@@ -83,6 +103,8 @@ class _LoginScreenState extends State<LoginScreen> {
           SnackBar(content: Text("Error: $e")),
         );
       }
+
+      setState(() => isLoading = false);
     } else {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text("Please select a user and enter password")),
@@ -123,14 +145,14 @@ class _LoginScreenState extends State<LoginScreen> {
               // ===== User Buttons =====
               ...users.map((u) {
                 String userName = u["userName"].toString();
-                bool isSelected = selectedUser == userName;
+                String loginNumber = u["loginNumber"].toString();
+                bool isSelected = selectedLoginNumber == loginNumber;
                 return Padding(
                   padding: const EdgeInsets.symmetric(vertical: 6),
                   child: ElevatedButton(
                     style: ElevatedButton.styleFrom(
-                      backgroundColor: isSelected
-                          ? Colors.blue.shade100
-                          : Colors.white,
+                      backgroundColor:
+                      isSelected ? Colors.blue.shade100 : Colors.white,
                       foregroundColor: Colors.blue.shade900,
                       side: const BorderSide(color: Colors.blue),
                       minimumSize:
@@ -141,7 +163,8 @@ class _LoginScreenState extends State<LoginScreen> {
                     ),
                     onPressed: () {
                       setState(() {
-                        selectedUser = userName;
+                        selectedLoginNumber = loginNumber;
+                        selectedUserName = userName;
                       });
                     },
                     child: Text(
@@ -160,17 +183,16 @@ class _LoginScreenState extends State<LoginScreen> {
 
               const SizedBox(height: 20),
 
-              // ===== Password Field (only if user selected) =====
-              if (selectedUser != null) ...[
+              // ===== Password Field =====
+              if (selectedLoginNumber != null) ...[
                 TextField(
                   controller: passwordController,
                   obscureText: true,
                   obscuringCharacter: '•',
-                  keyboardType:
-                  const TextInputType.numberWithOptions(decimal: false, signed: false),
+                  keyboardType: const TextInputType.numberWithOptions(
+                      decimal: false, signed: false),
                   inputFormatters: [
                     FilteringTextInputFormatter.digitsOnly,
-                    // LengthLimitingTextInputFormatter(6),
                   ],
                   style: TextStyle(fontSize: isTablet ? 20 : 16),
                   decoration: InputDecoration(

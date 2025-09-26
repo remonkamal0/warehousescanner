@@ -87,7 +87,7 @@ class HomeScreen extends StatelessWidget {
                 horizontal: isTablet ? size.width * 0.18 : 32.0,
               ),
               child: _ActionButton(
-                label: 'Exit',
+                label: 'Log out',
                 bg: const Color(0xFFE74C3C),
                 shadow: const Color(0x33E74C3C),
                 height: btnHeight,
