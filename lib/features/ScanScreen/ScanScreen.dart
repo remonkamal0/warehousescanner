@@ -31,7 +31,7 @@ class _ScanScreenState extends State<ScanScreen> {
   final TextEditingController qtyCtrl = TextEditingController(text: '0');
   final TextEditingController barcodeCtrl = TextEditingController();
 
-  // added focus nodes
+  // focus nodes
   final FocusNode _barcodeFocus = FocusNode();
   final FocusNode _qtyFocus = FocusNode();
 
@@ -69,7 +69,6 @@ class _ScanScreenState extends State<ScanScreen> {
   // فوكس على حقل الباركود + اخفاء الكيبورد
   void _ensureFocus() {
     if (!mounted) return;
-    // لو الـ qty واخد فوكس نطلعه
     try {
       if (_qtyFocus.hasFocus) _qtyFocus.unfocus();
     } catch (_) {}
@@ -165,7 +164,6 @@ class _ScanScreenState extends State<ScanScreen> {
 
     qty = val;
     setState(() {});
-    // لا نعيد الفوكس هنا لأن المستخدم ممكن يكتب لحد ما يضغط Done
   }
 
   void _addQty() {
@@ -186,7 +184,6 @@ class _ScanScreenState extends State<ScanScreen> {
       qty = 0;
     });
 
-    // بعد الإضافة رجّع الفوكس للباركود (تأخير صغير ليه علاقة بـ setState)
     Future.delayed(const Duration(milliseconds: 70), _ensureFocus);
   }
 
@@ -287,6 +284,47 @@ class _ScanScreenState extends State<ScanScreen> {
 
     if (result == true) {
       _done();
+    }
+  }
+
+  Future<void> _confirmCancel() async {
+    final result = await showDialog<bool>(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: const Text(
+          'Confirm Cancel',
+          style: TextStyle(fontWeight: FontWeight.bold),
+        ),
+        content: const Text(
+          'Are you sure you want to cancel?',
+          textAlign: TextAlign.center,
+        ),
+        actionsAlignment: MainAxisAlignment.spaceEvenly,
+        actions: [
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.grey,
+              shape: const StadiumBorder(),
+            ),
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('No', style: TextStyle(color: Colors.white)),
+          ),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Color(0xFF2F76D2),
+              shape: const StadiumBorder(),
+            ),
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Yes', style: TextStyle(color: Colors.white)),
+          ),
+        ],
+      ),
+    );
+
+    if (result == true) {
+      Navigator.pop(context); // خروج فعلي من الشاشة
     }
   }
 
@@ -416,25 +454,25 @@ class _ScanScreenState extends State<ScanScreen> {
                 child: SingleChildScrollView(
                   scrollDirection: Axis.vertical,
                   child: DataTable(
-                    headingRowColor:
-                    MaterialStateProperty.all(const Color(0xFFEFEFF4)),
+                    headingRowColor: MaterialStateProperty.all(
+                        const Color(0xFFEFEFF4)),
                     columns: const [
                       DataColumn(
                           label: Text('SKU',
-                              style:
-                              TextStyle(fontWeight: FontWeight.w700))),
+                              style: TextStyle(
+                                  fontWeight: FontWeight.w700))),
                       DataColumn(
                           label: Text('SOQ',
-                              style:
-                              TextStyle(fontWeight: FontWeight.w700))),
+                              style: TextStyle(
+                                  fontWeight: FontWeight.w700))),
                       DataColumn(
                           label: Text('Sc',
-                              style:
-                              TextStyle(fontWeight: FontWeight.w700))),
+                              style: TextStyle(
+                                  fontWeight: FontWeight.w700))),
                       DataColumn(
                           label: Text('U/M',
-                              style:
-                              TextStyle(fontWeight: FontWeight.w700))),
+                              style: TextStyle(
+                                  fontWeight: FontWeight.w700))),
                     ],
                     rows: List.generate(lines.length, (i) {
                       final line = lines[i];
@@ -465,8 +503,7 @@ class _ScanScreenState extends State<ScanScreen> {
                 ),
                 decoration: const BoxDecoration(
                   color: Colors.white,
-                  border:
-                  Border(top: BorderSide(color: Color(0xFFE6E6E6))),
+                  border: Border(top: BorderSide(color: Color(0xFFE6E6E6))),
                 ),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -498,12 +535,13 @@ class _ScanScreenState extends State<ScanScreen> {
                       children: [
                         Expanded(
                           child: OutlinedButton(
-                            onPressed: () => Navigator.pop(context),
+                            onPressed: _confirmCancel,
                             style: OutlinedButton.styleFrom(
                               padding: const EdgeInsets.symmetric(
                                   vertical: 14),
                               shape: RoundedRectangleBorder(
-                                  borderRadius: BorderRadius.circular(10)),
+                                  borderRadius:
+                                  BorderRadius.circular(10)),
                             ),
                             child: const Text('Cancel'),
                           ),
@@ -517,7 +555,8 @@ class _ScanScreenState extends State<ScanScreen> {
                               padding: const EdgeInsets.symmetric(
                                   vertical: 14),
                               shape: RoundedRectangleBorder(
-                                  borderRadius: BorderRadius.circular(10)),
+                                  borderRadius:
+                                  BorderRadius.circular(10)),
                             ),
                             child: const Text(
                               'Done',
@@ -603,7 +642,6 @@ class _ScanScreenState extends State<ScanScreen> {
               inputFormatters: [FilteringTextInputFormatter.digitsOnly],
               onChanged: _onQtyChanged,
               onSubmitted: (v) {
-                // لما المستخدم يضغط Done على الـ keyboards نعتبر الإدخال انتهى
                 _onQtyChanged(v);
                 Future.delayed(const Duration(milliseconds: 70), _ensureFocus);
               },

@@ -65,6 +65,14 @@ class _ReScanScreenState extends State<ReScanScreen> {
     WidgetsBinding.instance.addPostFrameCallback((_) => _ensureBarcodeFocus());
   }
 
+  @override
+  void dispose() {
+    qtyCtrl.dispose();
+    barcodeCtrl.dispose();
+    _barcodeFocus.dispose();
+    super.dispose();
+  }
+
   Future<void> fetchLines() async {
     final url =
         "http://irs.evioteg.com:8080/api/SalesOrderLine/GetOrderLinesWithBarcodesSSC/${widget.txnID}";
@@ -213,7 +221,8 @@ class _ReScanScreenState extends State<ReScanScreen> {
       if (response.statusCode == 200) {
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text("The data has been sent successfully.✅")),
+            const SnackBar(
+                content: Text("The data has been sent successfully.✅")),
           );
           Navigator.pop(context, true);
         }
@@ -269,7 +278,8 @@ class _ReScanScreenState extends State<ReScanScreen> {
             ),
             onPressed: () {
               Navigator.pop(context);
-              Future.delayed(const Duration(milliseconds: 50), _ensureBarcodeFocus);
+              Future.delayed(
+                  const Duration(milliseconds: 50), _ensureBarcodeFocus);
             },
             child: const Text('OK', style: TextStyle(color: Colors.white)),
           )
@@ -301,7 +311,8 @@ class _ReScanScreenState extends State<ReScanScreen> {
             ),
             onPressed: () {
               Navigator.pop(context);
-              Future.delayed(const Duration(milliseconds: 50), _ensureBarcodeFocus);
+              Future.delayed(
+                  const Duration(milliseconds: 50), _ensureBarcodeFocus);
             },
             child: const Text(
               'OK',
@@ -336,7 +347,8 @@ class _ReScanScreenState extends State<ReScanScreen> {
             ),
             onPressed: () {
               Navigator.pop(context, false);
-              Future.delayed(const Duration(milliseconds: 50), _ensureBarcodeFocus);
+              Future.delayed(
+                  const Duration(milliseconds: 50), _ensureBarcodeFocus);
             },
             child: const Text('No', style: TextStyle(color: Colors.white)),
           ),
@@ -349,6 +361,44 @@ class _ReScanScreenState extends State<ReScanScreen> {
               Navigator.pop(context, true);
               // الفوكس بيرجع برضه في finally بتاعة _done
             },
+            child: const Text('Yes', style: TextStyle(color: Colors.white)),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // ✅ Dialog تأكيد الإلغاء لزرار Cancel
+  Future<bool?> _showCancelConfirmDialog() {
+    return showDialog<bool>(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: const Text(
+          'Confirm Cancel',
+          style: TextStyle(fontWeight: FontWeight.bold),
+        ),
+        content: const Text(
+          'Are you sure you want to cancel?',
+          textAlign: TextAlign.center,
+        ),
+        actionsAlignment: MainAxisAlignment.spaceEvenly,
+        actions: [
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.grey,
+              shape: const StadiumBorder(),
+            ),
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('No', style: TextStyle(color: Colors.white)),
+          ),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Color(0xFF2F76D2),
+              shape: const StadiumBorder(),
+            ),
+            onPressed: () => Navigator.pop(context, true),
             child: const Text('Yes', style: TextStyle(color: Colors.white)),
           ),
         ],
@@ -397,7 +447,8 @@ class _ReScanScreenState extends State<ReScanScreen> {
           ),
           title: Text(
             'ReScan - ${widget.soNumber}',
-            style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w800),
+            style:
+            const TextStyle(color: Colors.white, fontWeight: FontWeight.w800),
           ),
         ),
         body: Stack(
@@ -410,21 +461,25 @@ class _ReScanScreenState extends State<ReScanScreen> {
                   child: SingleChildScrollView(
                     scrollDirection: Axis.vertical,
                     child: DataTable(
-                      headingRowColor:
-                      MaterialStateProperty.all(const Color(0xFFEFEFF4)),
+                      headingRowColor: MaterialStateProperty.all(
+                          const Color(0xFFEFEFF4)),
                       columns: const [
                         DataColumn(
                             label: Text('SKU',
-                                style: TextStyle(fontWeight: FontWeight.w700))),
+                                style: TextStyle(
+                                    fontWeight: FontWeight.w700))),
                         DataColumn(
                             label: Text('SOQ',
-                                style: TextStyle(fontWeight: FontWeight.w700))),
+                                style: TextStyle(
+                                    fontWeight: FontWeight.w700))),
                         DataColumn(
                             label: Text('Sc',
-                                style: TextStyle(fontWeight: FontWeight.w700))),
+                                style: TextStyle(
+                                    fontWeight: FontWeight.w700))),
                         DataColumn(
                             label: Text('U/M',
-                                style: TextStyle(fontWeight: FontWeight.w700))),
+                                style: TextStyle(
+                                    fontWeight: FontWeight.w700))),
                       ],
                       rows: List.generate(lines.length, (i) {
                         final line = lines[i];
@@ -432,13 +487,15 @@ class _ReScanScreenState extends State<ReScanScreen> {
                         return DataRow(
                           selected: selected,
                           color: MaterialStateProperty.resolveWith<Color?>(
-                                  (states) =>
-                              selected ? const Color(0xFFE0ECFF) : null),
+                                  (states) => selected
+                                  ? const Color(0xFFE0ECFF)
+                                  : null),
                           onSelectChanged: (_) => _selectRow(i),
                           cells: [
                             DataCell(Text(line.code)),
                             DataCell(Text('${line.orderedQty}')),
-                            DataCell(Text('${line.scanned + line.tempScanned}')),
+                            DataCell(Text(
+                                '${line.scanned + line.tempScanned}')),
                             DataCell(Text(line.unit)),
                           ],
                         );
@@ -454,7 +511,8 @@ class _ReScanScreenState extends State<ReScanScreen> {
                   ),
                   decoration: const BoxDecoration(
                     color: Colors.white,
-                    border: Border(top: BorderSide(color: Color(0xFFE6E6E6))),
+                    border:
+                    Border(top: BorderSide(color: Color(0xFFE6E6E6))),
                   ),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
@@ -467,7 +525,8 @@ class _ReScanScreenState extends State<ReScanScreen> {
                           _chipButton('Clr Line', onTap: _clearLine),
                           _chipButton('Add', onTap: _addQty),
                           const Text('Qty:',
-                              style: TextStyle(fontWeight: FontWeight.w600)),
+                              style:
+                              TextStyle(fontWeight: FontWeight.w600)),
                           _qtyBox(isTablet: isTablet),
                         ],
                       ),
@@ -478,19 +537,27 @@ class _ReScanScreenState extends State<ReScanScreen> {
                             : 'Select a row from the table…',
                         maxLines: 2,
                         overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(fontWeight: FontWeight.w700),
+                        style:
+                        const TextStyle(fontWeight: FontWeight.w700),
                       ),
                       const SizedBox(height: 12),
                       Row(
                         children: [
                           Expanded(
                             child: OutlinedButton(
-                              onPressed: () => Navigator.pop(context),
+                              onPressed: () async {
+                                final ok =
+                                await _showCancelConfirmDialog();
+                                if (ok == true) {
+                                  if (mounted) Navigator.pop(context);
+                                }
+                              },
                               style: OutlinedButton.styleFrom(
-                                padding:
-                                const EdgeInsets.symmetric(vertical: 14),
+                                padding: const EdgeInsets.symmetric(
+                                    vertical: 14),
                                 shape: RoundedRectangleBorder(
-                                    borderRadius: BorderRadius.circular(10)),
+                                    borderRadius:
+                                    BorderRadius.circular(10)),
                               ),
                               child: const Text('Cancel'),
                             ),
@@ -501,10 +568,11 @@ class _ReScanScreenState extends State<ReScanScreen> {
                               onPressed: _done,
                               style: ElevatedButton.styleFrom(
                                 backgroundColor: const Color(0xFF27AE60),
-                                padding:
-                                const EdgeInsets.symmetric(vertical: 14),
+                                padding: const EdgeInsets.symmetric(
+                                    vertical: 14),
                                 shape: RoundedRectangleBorder(
-                                    borderRadius: BorderRadius.circular(10)),
+                                    borderRadius:
+                                    BorderRadius.circular(10)),
                               ),
                               child: const Text(
                                 'Done',
@@ -532,12 +600,13 @@ class _ReScanScreenState extends State<ReScanScreen> {
                 child: TextField(
                   controller: barcodeCtrl,
                   focusNode: _barcodeFocus,
-                  autofocus: true,                  // ✅ يطلب الفوكس تلقائيًا
+                  autofocus: true, // ✅ يطلب الفوكس تلقائيًا
                   enableInteractiveSelection: false,
                   showCursor: false,
                   keyboardType: TextInputType.text,
                   textInputAction: TextInputAction.done,
-                  onSubmitted: (val) {              // ✅ لو السكانر بيبعت Enter
+                  onSubmitted: (val) {
+                    // ✅ لو السكانر بيبعت Enter
                     final s = val.trim();
                     if (s.isEmpty) return;
                     _applyScannedBarcode(s);
