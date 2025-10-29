@@ -661,15 +661,31 @@ class _ReScanScreenState extends State<ReScanScreen> {
               textAlign: TextAlign.center,
               keyboardType: TextInputType.number,
               inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+              onTap: () {
+                // لو المستخدم ضغط على الحقل وهو 0 → يمسحه
+                if (qtyCtrl.text == '0') qtyCtrl.clear();
+              },
               onChanged: _onQtyChanged,
               style: TextStyle(
-                  fontWeight: FontWeight.w700, fontSize: isTablet ? 18 : 16),
+                fontWeight: FontWeight.w700,
+                fontSize: isTablet ? 18 : 16,
+              ),
               decoration: const InputDecoration(
                 isDense: true,
                 border: InputBorder.none,
                 contentPadding: EdgeInsets.symmetric(vertical: 8),
               ),
               enabled: selectedLine != null,
+              onSubmitted: (_) {
+                // لو ضغط Enter من الكيبورد
+                if (selectedLine != null && qty > 0) {
+                  setState(() {
+                    selectedLine!.tempScanned += qty;
+                    qty = 0;
+                  });
+                  Future.delayed(const Duration(milliseconds: 100), _ensureBarcodeFocus);
+                }
+              },
             ),
           ),
           InkWell(
@@ -677,6 +693,32 @@ class _ReScanScreenState extends State<ReScanScreen> {
             child: const Padding(
               padding: EdgeInsets.all(8.0),
               child: Icon(Icons.add, size: 20),
+            ),
+          ),
+          const SizedBox(width: 6),
+          ElevatedButton(
+            onPressed: selectedLine == null
+                ? null
+                : () {
+              if (qty > 0) {
+                setState(() {
+                  selectedLine!.tempScanned += qty;
+                  qty = 0;
+                });
+              }
+              Future.delayed(const Duration(milliseconds: 100), _ensureBarcodeFocus);
+            },
+            style: ElevatedButton.styleFrom(
+              backgroundColor: const Color(0xFF2F76D2),
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
+              minimumSize: const Size(40, 40),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(6),
+              ),
+            ),
+            child: const Text(
+              'OK',
+              style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
             ),
           ),
         ],
@@ -726,7 +768,7 @@ class _SoLine {
           (json['orderedQty'] as num?)?.toInt() ??
           0,
       rate: (json['rate'] as num?)?.toDouble() ?? 0.0,
-      scanned: first + second,
+      scanned: 0,
       barcodes: List<String>.from(json['barcodes'] ?? []),
     );
   }

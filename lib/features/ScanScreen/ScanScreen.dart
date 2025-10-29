@@ -640,13 +640,15 @@ class _ScanScreenState extends State<ScanScreen> {
               keyboardType: TextInputType.number,
               textInputAction: TextInputAction.done,
               inputFormatters: [FilteringTextInputFormatter.digitsOnly],
-              onChanged: _onQtyChanged,
-              onSubmitted: (v) {
-                _onQtyChanged(v);
-                Future.delayed(const Duration(milliseconds: 70), _ensureFocus);
+              onTap: () {
+                // أول ما المستخدم يضغط، امسح الصفر الافتراضي
+                if (qtyCtrl.text == '0') qtyCtrl.clear();
               },
+              onChanged: _onQtyChanged,
               style: TextStyle(
-                  fontWeight: FontWeight.w700, fontSize: isTablet ? 18 : 16),
+                fontWeight: FontWeight.w700,
+                fontSize: isTablet ? 18 : 16,
+              ),
               decoration: const InputDecoration(
                 isDense: true,
                 border: InputBorder.none,
@@ -660,6 +662,35 @@ class _ScanScreenState extends State<ScanScreen> {
             child: const Padding(
               padding: EdgeInsets.all(8.0),
               child: Icon(Icons.add, size: 20),
+            ),
+          ),
+          const SizedBox(width: 6),
+          // ✅ زر OK الجديد
+          ElevatedButton(
+            onPressed: selectedLine == null
+                ? null
+                : () {
+              // نفس فكرة _addQty
+              if (qty > 0) {
+                setState(() {
+                  selectedLine!.tempScanned += qty;
+                  qty = 0; // رجّعها صفر بعد الإضافة
+                });
+              }
+              // ارجع الفوكس للباركود
+              Future.delayed(const Duration(milliseconds: 100), _ensureFocus);
+            },
+            style: ElevatedButton.styleFrom(
+              backgroundColor: const Color(0xFF2F76D2),
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
+              minimumSize: const Size(40, 40),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(6),
+              ),
+            ),
+            child: const Text(
+              'OK',
+              style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
             ),
           ),
         ],
