@@ -1,4 +1,4 @@
-// --- نفس الـ imports بتاعتك فوق ---
+// --- same imports as yours above ---
 import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -28,7 +28,9 @@ class _ScanScreenState extends State<ScanScreen> {
   _SoLine? get selectedLine =>
       (selectedIndex != null) ? lines[selectedIndex!] : null;
 
-  final TextEditingController qtyCtrl = TextEditingController(text: '0');
+  // Manual entry for qty
+  final TextEditingController qtyCtrl = TextEditingController(text: '');
+  // Hidden textfield to capture barcode
   final TextEditingController barcodeCtrl = TextEditingController();
 
   // focus nodes
@@ -37,18 +39,17 @@ class _ScanScreenState extends State<ScanScreen> {
 
   bool _processingBarcode = false;
 
-  int get qty => int.tryParse(qtyCtrl.text) ?? 0;
-  set qty(int v) => qtyCtrl.text = v.toString();
+  /// Pending quantity stored "outside" and used only on scan
+  int _pendingQty = 0;
 
   @override
   void initState() {
     super.initState();
     fetchLines();
-
-    // اطلب الفوكس بعد فتح الشاشة
+    // Focus barcode after screen opens
     Future.delayed(const Duration(milliseconds: 300), _ensureFocus);
 
-    // Listener احتياطي للتعامل مع scanners اللي مش بتبعت Enter
+    // Fallback listener for scanners that don't send Enter
     barcodeCtrl.addListener(() {
       final text = barcodeCtrl.text;
       if (text.isNotEmpty) {
@@ -66,7 +67,7 @@ class _ScanScreenState extends State<ScanScreen> {
     super.dispose();
   }
 
-  // فوكس على حقل الباركود + اخفاء الكيبورد
+  // Focus barcode + hide keyboard
   void _ensureFocus() {
     if (!mounted) return;
     try {
@@ -76,7 +77,7 @@ class _ScanScreenState extends State<ScanScreen> {
     SystemChannels.textInput.invokeMethod('TextInput.hide');
   }
 
-  // Normalize + منع المعالجة المزدوجة
+  // Normalize + prevent double-processing
   void _processBarcode(String raw) {
     if (_processingBarcode) return;
     final barcode = raw.replaceAll('\n', '').replaceAll('\r', '').trim();
@@ -121,79 +122,47 @@ class _ScanScreenState extends State<ScanScreen> {
   void _selectRow(int index) {
     setState(() {
       selectedIndex = index;
-      qty = 0;
+      // selection does not affect pending qty
     });
   }
 
-  void _incQty() {
-    if (selectedLine == null) return;
-    final next = qty + 1;
-    final totalIfNext = selectedLine!.scanned + selectedLine!.tempScanned + next;
-
-    if (totalIfNext > selectedLine!.orderedQty) {
-      _showOverDialog(
-        selectedLine!.orderedQty,
-        selectedLine!.scanned + selectedLine!.tempScanned,
-        next,
+  /// Save pending qty manually (OK button)
+  void _savePendingQty() {
+    final val = int.tryParse(qtyCtrl.text.trim());
+    if (val == null || val <= 0) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text("⚠️ Enter a valid quantity (> 0) then press OK")),
       );
+      FocusScope.of(context).requestFocus(_qtyFocus);
+      return;
     }
-
-    qty = next;
-    setState(() {});
-  }
-
-  void _decQty() {
-    if (selectedLine == null) return;
-    final next = (qty - 1).clamp(0, 1 << 31);
-    qty = next;
-    setState(() {});
-  }
-
-  void _onQtyChanged(String v) {
-    if (selectedLine == null) return;
-    final val = int.tryParse(v) ?? 0;
-    final totalIfVal = selectedLine!.scanned + selectedLine!.tempScanned + val;
-
-    if (totalIfVal > selectedLine!.orderedQty) {
-      _showOverDialog(
-        selectedLine!.orderedQty,
-        selectedLine!.scanned + selectedLine!.tempScanned,
-        val,
-      );
-    }
-
-    qty = val;
-    setState(() {});
-  }
-
-  void _addQty() {
-    if (selectedLine == null || qty == 0) return;
-
-    final totalIfAdd = selectedLine!.scanned + selectedLine!.tempScanned + qty;
-
-    if (totalIfAdd > selectedLine!.orderedQty) {
-      _showOverDialog(
-        selectedLine!.orderedQty,
-        selectedLine!.scanned + selectedLine!.tempScanned,
-        qty,
-      );
-    }
-
     setState(() {
-      selectedLine!.tempScanned += qty;
-      qty = 0;
+      _pendingQty = val;
     });
 
-    Future.delayed(const Duration(milliseconds: 70), _ensureFocus);
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text("✅ Pending Qty saved: $_pendingQty")),
+    );
+    qtyCtrl.clear(); // leave the field
+    Future.delayed(const Duration(milliseconds: 120), _ensureFocus);
+  }
+
+  /// Reset pending qty to zero
+  void _resetPendingQty() {
+    setState(() {
+      _pendingQty = 0;
+    });
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text("Pending Qty reset to 0")),
+    );
+    _ensureFocus();
   }
 
   void _clearLine() {
     if (selectedLine == null) return;
     setState(() {
       selectedLine!.tempScanned = 0;
-      qty = 0;
     });
-
     Future.delayed(const Duration(milliseconds: 70), _ensureFocus);
   }
 
@@ -324,7 +293,7 @@ class _ScanScreenState extends State<ScanScreen> {
     );
 
     if (result == true) {
-      Navigator.pop(context); // خروج فعلي من الشاشة
+      Navigator.pop(context);
     }
   }
 
@@ -367,11 +336,50 @@ class _ScanScreenState extends State<ScanScreen> {
     );
   }
 
+  /// Auto-capture a small qty on first scan:
+  /// - If input is 1..3 → use it.
+  /// - If input is empty → default to 1.
+  /// Returns true if _pendingQty was set.
+  bool _bootstrapPendingQtyIfSmall() {
+    final raw = qtyCtrl.text.trim();
+    if (raw.isEmpty) {
+      setState(() => _pendingQty = 1); // default when empty
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text("✅ Pending Qty auto-set to 1")),
+      );
+      return true;
+    }
+    final v = int.tryParse(raw);
+    if (v != null && v >= 1 && v <= 3) {
+      setState(() => _pendingQty = v);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text("✅ Pending Qty auto-set to $_pendingQty")),
+      );
+      qtyCtrl.clear(); // optional
+      return true;
+    }
+    return false;
+  }
+
+  /// Scan adds the saved pending qty to the matched line
   void _applyScannedBarcode(String barcode) {
+    // If no pending qty yet, try to bootstrap from the input (small or empty)
+    if (_pendingQty <= 0) {
+      final captured = _bootstrapPendingQtyIfSmall();
+      if (!captured) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text("⚠️ Enter quantity and press OK first")),
+        );
+        _ensureFocus();
+        return;
+      }
+      // now _pendingQty is set (1..3 or default 1)
+    }
+
     final index = lines.indexWhere((line) => line.barcodes.contains(barcode));
     if (index != -1) {
       final line = lines[index];
-      const adding = 1;
+      final adding = _pendingQty;
       final totalIfAdd = line.scanned + line.tempScanned + adding;
 
       if (totalIfAdd > line.orderedQty) {
@@ -385,12 +393,12 @@ class _ScanScreenState extends State<ScanScreen> {
       setState(() {
         selectedIndex = index;
         line.tempScanned += adding;
-        qty = 0;
       });
     } else {
       _showInvalidBarcodeDialog(barcode);
     }
   }
+
 
   Future<void> _showInvalidBarcodeDialog(String barcode) {
     return showDialog<void>(
@@ -440,9 +448,20 @@ class _ScanScreenState extends State<ScanScreen> {
         ),
         title: Text(
           'Scan - ${widget.soNumber}',
-          style:
-          const TextStyle(color: Colors.white, fontWeight: FontWeight.w800),
+          style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w800),
         ),
+        // actions: [
+        //   Padding(
+        //     padding: const EdgeInsets.symmetric(horizontal: 8.0),
+        //     child: Chip(
+        //       label: Text(
+        //         'Pending: $_pendingQty',
+        //         style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w700),
+        //       ),
+        //       backgroundColor: const Color(0xFF1E40AF),
+        //     ),
+        //   ),
+        // ],
       ),
       body: Stack(
         children: [
@@ -450,29 +469,36 @@ class _ScanScreenState extends State<ScanScreen> {
               ? const Center(child: CircularProgressIndicator())
               : Column(
             children: [
+              // Small banner to show pending qty
+              Container(
+                width: double.infinity,
+                color: const Color(0xFFEFF6FF),
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                child: Text(
+                  "Pending Qty (for scan): $_pendingQty",
+                  style: const TextStyle(
+                      fontWeight: FontWeight.w700, color: Color(0xFF1D4ED8)),
+                ),
+              ),
               Expanded(
                 child: SingleChildScrollView(
                   scrollDirection: Axis.vertical,
                   child: DataTable(
-                    headingRowColor: MaterialStateProperty.all(
-                        const Color(0xFFEFEFF4)),
+                    headingRowColor:
+                    MaterialStateProperty.all(const Color(0xFFEFEFF4)),
                     columns: const [
                       DataColumn(
                           label: Text('SKU',
-                              style: TextStyle(
-                                  fontWeight: FontWeight.w700))),
+                              style: TextStyle(fontWeight: FontWeight.w700))),
                       DataColumn(
                           label: Text('SOQ',
-                              style: TextStyle(
-                                  fontWeight: FontWeight.w700))),
+                              style: TextStyle(fontWeight: FontWeight.w700))),
                       DataColumn(
-                          label: Text('Sc',
-                              style: TextStyle(
-                                  fontWeight: FontWeight.w700))),
+                          label: Text('Scanned',
+                              style: TextStyle(fontWeight: FontWeight.w700))),
                       DataColumn(
                           label: Text('U/M',
-                              style: TextStyle(
-                                  fontWeight: FontWeight.w700))),
+                              style: TextStyle(fontWeight: FontWeight.w700))),
                     ],
                     rows: List.generate(lines.length, (i) {
                       final line = lines[i];
@@ -486,8 +512,7 @@ class _ScanScreenState extends State<ScanScreen> {
                         cells: [
                           DataCell(Text(line.code)),
                           DataCell(Text('${line.orderedQty}')),
-                          DataCell(Text(
-                              '${line.scanned + line.tempScanned}')),
+                          DataCell(Text('${line.scanned + line.tempScanned}')),
                           DataCell(Text(line.unit)),
                         ],
                       );
@@ -513,22 +538,15 @@ class _ScanScreenState extends State<ScanScreen> {
                       runSpacing: 10,
                       crossAxisAlignment: WrapCrossAlignment.center,
                       children: [
-                        _chipButton('Clr Line', onTap: _clearLine),
-                        _chipButton('Add', onTap: _addQty),
+                        _chipButton('Clear Line', onTap: _clearLine),
                         const Text('Qty:',
-                            style:
-                            TextStyle(fontWeight: FontWeight.w600)),
-                        _qtyBox(isTablet: isTablet),
+                            style: TextStyle(fontWeight: FontWeight.w600)),
+                        _qtyBox(isTablet: isTablet), // manual + OK + Reset
+                        OutlinedButton(
+                          onPressed: _resetPendingQty,
+                          child: const Text('Reset'),
+                        ),
                       ],
-                    ),
-                    const SizedBox(height: 10),
-                    Text(
-                      selectedLine != null
-                          ? '${selectedLine!.desc}'
-                          : 'Select a row from the table…',
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(fontWeight: FontWeight.w700),
                     ),
                     const SizedBox(height: 12),
                     Row(
@@ -537,11 +555,10 @@ class _ScanScreenState extends State<ScanScreen> {
                           child: OutlinedButton(
                             onPressed: _confirmCancel,
                             style: OutlinedButton.styleFrom(
-                              padding: const EdgeInsets.symmetric(
-                                  vertical: 14),
+                              padding:
+                              const EdgeInsets.symmetric(vertical: 14),
                               shape: RoundedRectangleBorder(
-                                  borderRadius:
-                                  BorderRadius.circular(10)),
+                                  borderRadius: BorderRadius.circular(10)),
                             ),
                             child: const Text('Cancel'),
                           ),
@@ -552,11 +569,10 @@ class _ScanScreenState extends State<ScanScreen> {
                             onPressed: _confirmDone,
                             style: ElevatedButton.styleFrom(
                               backgroundColor: const Color(0xFF2F76D2),
-                              padding: const EdgeInsets.symmetric(
-                                  vertical: 14),
+                              padding:
+                              const EdgeInsets.symmetric(vertical: 14),
                               shape: RoundedRectangleBorder(
-                                  borderRadius:
-                                  BorderRadius.circular(10)),
+                                  borderRadius: BorderRadius.circular(10)),
                             ),
                             child: const Text(
                               'Done',
@@ -574,7 +590,7 @@ class _ScanScreenState extends State<ScanScreen> {
               ),
             ],
           ),
-          // TextField مخفي للباركود
+          // Hidden TextField for barcode input
           Positioned(
             left: -100,
             top: -100,
@@ -613,8 +629,9 @@ class _ScanScreenState extends State<ScanScreen> {
     );
   }
 
+  /// Manual qty box + OK to save
   Widget _qtyBox({required bool isTablet}) {
-    final tfWidth = isTablet ? 90.0 : 70.0;
+    final tfWidth = isTablet ? 120.0 : 100.0;
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
       decoration: BoxDecoration(
@@ -624,13 +641,6 @@ class _ScanScreenState extends State<ScanScreen> {
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          InkWell(
-            onTap: selectedLine == null ? null : _decQty,
-            child: const Padding(
-              padding: EdgeInsets.all(8.0),
-              child: Icon(Icons.remove, size: 20),
-            ),
-          ),
           SizedBox(
             width: tfWidth,
             child: TextField(
@@ -640,49 +650,25 @@ class _ScanScreenState extends State<ScanScreen> {
               keyboardType: TextInputType.number,
               textInputAction: TextInputAction.done,
               inputFormatters: [FilteringTextInputFormatter.digitsOnly],
-              onTap: () {
-                // أول ما المستخدم يضغط، امسح الصفر الافتراضي
-                if (qtyCtrl.text == '0') qtyCtrl.clear();
-              },
-              onChanged: _onQtyChanged,
+              onSubmitted: (_) => _savePendingQty(), // Enter = OK
               style: TextStyle(
                 fontWeight: FontWeight.w700,
                 fontSize: isTablet ? 18 : 16,
               ),
               decoration: const InputDecoration(
+                hintText: 'Enter qty',
                 isDense: true,
                 border: InputBorder.none,
                 contentPadding: EdgeInsets.symmetric(vertical: 8),
               ),
-              enabled: selectedLine != null,
-            ),
-          ),
-          InkWell(
-            onTap: selectedLine == null ? null : _incQty,
-            child: const Padding(
-              padding: EdgeInsets.all(8.0),
-              child: Icon(Icons.add, size: 20),
             ),
           ),
           const SizedBox(width: 6),
-          // ✅ زر OK الجديد
           ElevatedButton(
-            onPressed: selectedLine == null
-                ? null
-                : () {
-              // نفس فكرة _addQty
-              if (qty > 0) {
-                setState(() {
-                  selectedLine!.tempScanned += qty;
-                  qty = 0; // رجّعها صفر بعد الإضافة
-                });
-              }
-              // ارجع الفوكس للباركود
-              Future.delayed(const Duration(milliseconds: 100), _ensureFocus);
-            },
+            onPressed: _savePendingQty, // save only
             style: ElevatedButton.styleFrom(
               backgroundColor: const Color(0xFF2F76D2),
-              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
               minimumSize: const Size(40, 40),
               shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(6),
