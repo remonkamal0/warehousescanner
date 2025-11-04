@@ -77,6 +77,15 @@ class _ScanScreenState extends State<ScanScreen> {
     SystemChannels.textInput.invokeMethod('TextInput.hide');
   }
 
+  // NEW: consume & reset pending qty after it’s used
+  void _consumePendingQty() { // NEW
+    setState(() => _pendingQty = 0);
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text("✅ Pending Qty consumed and reset to 0")),
+    );
+    _ensureFocus();
+  } // NEW
+
   // Normalize + prevent double-processing
   void _processBarcode(String raw) {
     if (_processingBarcode) return;
@@ -394,11 +403,12 @@ class _ScanScreenState extends State<ScanScreen> {
         selectedIndex = index;
         line.tempScanned += adding;
       });
+
+      _consumePendingQty(); // NEW: صفرنا الـ Pending بعد الإضافة
     } else {
       _showInvalidBarcodeDialog(barcode);
     }
   }
-
 
   Future<void> _showInvalidBarcodeDialog(String barcode) {
     return showDialog<void>(
@@ -450,18 +460,6 @@ class _ScanScreenState extends State<ScanScreen> {
           'Scan - ${widget.soNumber}',
           style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w800),
         ),
-        // actions: [
-        //   Padding(
-        //     padding: const EdgeInsets.symmetric(horizontal: 8.0),
-        //     child: Chip(
-        //       label: Text(
-        //         'Pending: $_pendingQty',
-        //         style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w700),
-        //       ),
-        //       backgroundColor: const Color(0xFF1E40AF),
-        //     ),
-        //   ),
-        // ],
       ),
       body: Stack(
         children: [
@@ -506,8 +504,7 @@ class _ScanScreenState extends State<ScanScreen> {
                       return DataRow(
                         selected: selected,
                         color: MaterialStateProperty.resolveWith<Color?>(
-                                (states) =>
-                            selected ? const Color(0xFFE0ECFF) : null),
+                                (states) => selected ? const Color(0xFFE0ECFF) : null),
                         onSelectChanged: (_) => _selectRow(i),
                         cells: [
                           DataCell(Text(line.code)),
@@ -555,8 +552,7 @@ class _ScanScreenState extends State<ScanScreen> {
                           child: OutlinedButton(
                             onPressed: _confirmCancel,
                             style: OutlinedButton.styleFrom(
-                              padding:
-                              const EdgeInsets.symmetric(vertical: 14),
+                              padding: const EdgeInsets.symmetric(vertical: 14),
                               shape: RoundedRectangleBorder(
                                   borderRadius: BorderRadius.circular(10)),
                             ),
@@ -569,16 +565,14 @@ class _ScanScreenState extends State<ScanScreen> {
                             onPressed: _confirmDone,
                             style: ElevatedButton.styleFrom(
                               backgroundColor: const Color(0xFF2F76D2),
-                              padding:
-                              const EdgeInsets.symmetric(vertical: 14),
+                              padding: const EdgeInsets.symmetric(vertical: 14),
                               shape: RoundedRectangleBorder(
                                   borderRadius: BorderRadius.circular(10)),
                             ),
                             child: const Text(
                               'Done',
                               style: TextStyle(
-                                  color: Colors.white,
-                                  fontWeight: FontWeight.w700),
+                                  color: Colors.white, fontWeight: FontWeight.w700),
                             ),
                           ),
                         ),

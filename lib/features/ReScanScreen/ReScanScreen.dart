@@ -33,7 +33,7 @@ class _ReScanScreenState extends State<ReScanScreen> {
   final FocusNode _barcodeFocus = FocusNode();
   final FocusNode _qtyFocus = FocusNode();
 
-  /// Pending quantity stored "outside" and used on every scan
+  /// Pending quantity used once on scan (then reset)
   int _pendingQty = 0;
 
   @override
@@ -41,7 +41,7 @@ class _ReScanScreenState extends State<ReScanScreen> {
     super.initState();
     fetchLines();
 
-    // Fallback listener for scanners that don't send Enter
+    // Fallback for scanners that don't send Enter
     barcodeCtrl.addListener(() {
       final s = barcodeCtrl.text.trim();
       if (s.isNotEmpty) {
@@ -122,11 +122,20 @@ class _ReScanScreenState extends State<ReScanScreen> {
     Future.delayed(const Duration(milliseconds: 100), _ensureBarcodeFocus);
   }
 
-  /// Reset pending qty to zero
+  /// Reset pending qty to zero (manual)
   void _resetPendingQty() {
     setState(() => _pendingQty = 0);
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(content: Text("Pending Qty reset to 0")),
+    );
+    _ensureBarcodeFocus();
+  }
+
+  /// ✅ NEW: consume & reset pending qty automatically after a successful scan
+  void _consumePendingQty() {
+    setState(() => _pendingQty = 0);
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text("✅ Pending Qty used and reset to 0")),
     );
     _ensureBarcodeFocus();
   }
@@ -154,7 +163,6 @@ class _ReScanScreenState extends State<ReScanScreen> {
         ? lines.first.txnid
         : widget.txnID;
 
-    // Keep the SAME API (no changes)
     final url =
         "http://irs.evioteg.com:8080/api/SalesOrderLine/UpdateOrderDetailsSSC/"
         "${Uri.encodeComponent(salesOrderId)}/"
@@ -363,14 +371,19 @@ class _ReScanScreenState extends State<ReScanScreen> {
 
       if (totalIfAdd > line.orderedQty) {
         _showOverDialog(ordered: line.orderedQty, current: current, adding: adding);
+        // ملاحظة: لسه بنضيف ونستهلك الكمية. لو مش عايز تضيف عند الزيادة، اعمل return هنا.
       }
 
       setState(() {
         selectedIndex = index;
         line.tempScanned += adding;
       });
+
+      // ✅ أهم خطوة: استهلاك وتصفير الكمية بعد الإضافة
+      _consumePendingQty();
     } else {
       _showInvalidBarcodeDialog(barcode);
+      // لا نستهلك الكمية لو الباركود غير صالح
     }
 
     _ensureBarcodeFocus();
@@ -397,18 +410,6 @@ class _ReScanScreenState extends State<ReScanScreen> {
             'ReScan - ${widget.soNumber}',
             style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w800),
           ),
-          // actions: [
-          //   Padding(
-          //     padding: const EdgeInsets.symmetric(horizontal: 8.0),
-          //     child: Chip(
-          //       label: Text(
-          //         'Pending: $_pendingQty',
-          //         style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w700),
-          //       ),
-          //       backgroundColor: const Color(0xFF1E40AF),
-          //     ),
-          //   ),
-          // ],
         ),
         body: Stack(
           children: [
