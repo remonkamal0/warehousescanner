@@ -77,14 +77,14 @@ class _ScanScreenState extends State<ScanScreen> {
     SystemChannels.textInput.invokeMethod('TextInput.hide');
   }
 
-  // NEW: consume & reset pending qty after it’s used
-  void _consumePendingQty() { // NEW
+  // consume & reset pending qty after it’s used
+  void _consumePendingQty() {
     setState(() => _pendingQty = 0);
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(content: Text("✅ Pending Qty consumed and reset to 0")),
     );
     _ensureFocus();
-  } // NEW
+  }
 
   // Normalize + prevent double-processing
   void _processBarcode(String raw) {
@@ -175,6 +175,55 @@ class _ScanScreenState extends State<ScanScreen> {
     Future.delayed(const Duration(milliseconds: 70), _ensureFocus);
   }
 
+  // ✅ ADD now ADDS to current quantity (+=)
+  void _addQtyToSelectedLine() {
+    if (selectedLine == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text("⚠️ Select a line first")),
+      );
+      return;
+    }
+
+    int? typed = int.tryParse(qtyCtrl.text.trim());
+    int adding;
+    if (typed != null && typed > 0) {
+      adding = typed;
+    } else if (_pendingQty > 0) {
+      adding = _pendingQty;
+    } else {
+      final captured = _bootstrapPendingQtyIfSmall();
+      if (!captured) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text("⚠️ Enter qty then press ADD")),
+        );
+        FocusScope.of(context).requestFocus(_qtyFocus);
+        return;
+      }
+      adding = _pendingQty;
+    }
+
+    final line = selectedLine!;
+    final current = line.scanned + line.tempScanned;
+    final totalIfAdd = current + adding;
+
+    if (totalIfAdd > line.orderedQty) {
+      _showOverDialog(line.orderedQty, current, adding);
+      // لو عايز تمنع الإضافة عند الزيادة: اعمل return هنا
+      // return;
+    }
+
+    setState(() {
+      line.tempScanned += adding; // ← ← الإضافة بدل التعيين
+    });
+
+    qtyCtrl.clear();
+    _consumePendingQty(); // reset pending + focus + snackbar
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text("✅ Added $adding to ${line.code}")),
+    );
+  }
+
   Future<void> _done() async {
     final authProvider = Provider.of<AuthProvider>(context, listen: false);
     final userID = authProvider.userID;
@@ -206,8 +255,7 @@ class _ScanScreenState extends State<ScanScreen> {
       if (response.statusCode == 200) {
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-                content: Text("The data has been sent successfully. ✅")),
+            const SnackBar(content: Text("The data has been sent successfully. ✅")),
           );
           Navigator.pop(context, true);
         }
@@ -306,43 +354,42 @@ class _ScanScreenState extends State<ScanScreen> {
     }
   }
 
-  Future<void> _showOverDialog(int ordered, int current, int adding) {
-    return showDialog<void>(
+  Future<bool> _showExitConfirmDialog() async {
+    final result = await showDialog<bool>(
       context: context,
-      barrierDismissible: true,
+      barrierDismissible: false,
       builder: (_) => AlertDialog(
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
         title: const Text(
-          'Qty is Over',
+          'Confirm Exit',
           style: TextStyle(fontWeight: FontWeight.bold),
+        ),
+        content: const Text(
+          'Are you sure you want to exit this screen?',
           textAlign: TextAlign.center,
         ),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Text("Ordered Qty: $ordered"),
-            Text("Current Qty: $current"),
-            Text("Trying to Add: $adding"),
-            const SizedBox(height: 8),
-            const Text(
-              "⚠️ The quantity will still be added.",
-              style: TextStyle(color: Colors.red, fontWeight: FontWeight.w600),
-            ),
-          ],
-        ),
-        actionsAlignment: MainAxisAlignment.center,
+        actionsAlignment: MainAxisAlignment.spaceEvenly,
         actions: [
           ElevatedButton(
             style: ElevatedButton.styleFrom(
-              backgroundColor: const Color(0xFF2F76D2),
+              backgroundColor: Colors.grey,
               shape: const StadiumBorder(),
             ),
-            onPressed: () => Navigator.pop(context),
-            child: const Text('OK', style: TextStyle(color: Colors.white)),
-          )
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('No', style: TextStyle(color: Colors.white)),
+          ),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Color(0xFF2F76D2),
+              shape: const StadiumBorder(),
+            ),
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Yes', style: TextStyle(color: Colors.white)),
+          ),
         ],
       ),
     );
+    return result ?? false;
   }
 
   /// Auto-capture a small qty on first scan:
@@ -401,13 +448,52 @@ class _ScanScreenState extends State<ScanScreen> {
 
       setState(() {
         selectedIndex = index;
-        line.tempScanned += adding;
+        line.tempScanned += adding; // ← إضافة بالباركود كذلك
       });
 
-      _consumePendingQty(); // NEW: صفرنا الـ Pending بعد الإضافة
+      _consumePendingQty(); // reset after adding
     } else {
       _showInvalidBarcodeDialog(barcode);
     }
+  }
+
+  Future<void> _showOverDialog(int ordered, int current, int adding) {
+    return showDialog<void>(
+      context: context,
+      barrierDismissible: true,
+      builder: (_) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: const Text(
+          'Qty is Over',
+          style: TextStyle(fontWeight: FontWeight.bold),
+          textAlign: TextAlign.center,
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text("Ordered Qty: $ordered"),
+            Text("Current Qty: $current"),
+            Text("Trying to Add: $adding"),
+            const SizedBox(height: 8),
+            const Text(
+              "⚠️ The quantity will still be added.",
+              style: TextStyle(color: Colors.red, fontWeight: FontWeight.w600),
+            ),
+          ],
+        ),
+        actionsAlignment: MainAxisAlignment.center,
+        actions: [
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(
+              backgroundColor: const Color(0xFF2F76D2),
+              shape: const StadiumBorder(),
+            ),
+            onPressed: () => Navigator.pop(context),
+            child: const Text('OK', style: TextStyle(color: Colors.white)),
+          )
+        ],
+      ),
+    );
   }
 
   Future<void> _showInvalidBarcodeDialog(String barcode) {
@@ -442,169 +528,290 @@ class _ScanScreenState extends State<ScanScreen> {
     );
   }
 
+  // === Selected line info card (description + numbers) ===
+  Widget _selectedLineInfoCard() {
+    final line = selectedLine;
+    if (line == null) {
+      return Container(
+        width: double.infinity,
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+        child: const Text(
+          "Select an item to see details here…",
+          style: TextStyle(color: Colors.grey),
+        ),
+      );
+    }
+
+    final current = line.scanned + line.tempScanned;
+    final remaining = (line.orderedQty - current);
+    final safeRemaining = remaining < 0 ? 0 : remaining;
+
+    return Container(
+      width: double.infinity,
+      margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: const Color(0xFFF7FAFF),
+        border: Border.all(color: const Color(0xFFE3EAF6)),
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text(
+                "SKU: ${line.code}",
+                style: const TextStyle(fontWeight: FontWeight.w700),
+              ),
+              Text(
+                "U/M: ${line.unit}",
+                style: const TextStyle(color: Colors.black54),
+              ),
+            ],
+          ),
+          const SizedBox(height: 6),
+          Text(
+            line.desc.isEmpty ? "No description" : line.desc,
+            style: const TextStyle(fontSize: 14),
+          ),
+          const SizedBox(height: 10),
+          Wrap(
+            spacing: 16,
+            runSpacing: 8,
+            children: [
+              _pill("Ordered", "${line.orderedQty}"),
+              _pill("Scanned", "$current"),
+              _pill("Remaining", "$safeRemaining"),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _pill(String label, String value) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+      decoration: BoxDecoration(
+        color: const Color(0xFFEFF6FF),
+        borderRadius: BorderRadius.circular(20),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text("$label: ",
+              style: const TextStyle(
+                  fontWeight: FontWeight.w600, color: Color(0xFF1D4ED8))),
+          Text(value, style: const TextStyle(fontWeight: FontWeight.w700)),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final size = MediaQuery.of(context).size;
     final isTablet = size.width >= 600;
 
-    return Scaffold(
-      backgroundColor: Colors.white,
-      appBar: AppBar(
-        backgroundColor: const Color(0xFF2F76D2),
-        centerTitle: true,
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back, color: Colors.white),
-          onPressed: () => Navigator.pop(context),
+    return WillPopScope(
+      onWillPop: _showExitConfirmDialog, // confirmation on system back
+      child: Scaffold(
+        backgroundColor: Colors.white,
+        appBar: AppBar(
+          backgroundColor: const Color(0xFF2F76D2),
+          centerTitle: true,
+          leading: IconButton(
+            icon: const Icon(Icons.arrow_back, color: Colors.white),
+            onPressed: () async {
+              final confirm = await _showExitConfirmDialog();
+              if (confirm && mounted) Navigator.pop(context);
+            },
+          ),
+          title: Text(
+            'Scan - ${widget.soNumber}',
+            style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w800),
+          ),
         ),
-        title: Text(
-          'Scan - ${widget.soNumber}',
-          style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w800),
-        ),
-      ),
-      body: Stack(
-        children: [
-          isLoading
-              ? const Center(child: CircularProgressIndicator())
-              : Column(
-            children: [
-              // Small banner to show pending qty
-              Container(
-                width: double.infinity,
-                color: const Color(0xFFEFF6FF),
-                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                child: Text(
-                  "Pending Qty (for scan): $_pendingQty",
-                  style: const TextStyle(
-                      fontWeight: FontWeight.w700, color: Color(0xFF1D4ED8)),
-                ),
-              ),
-              Expanded(
-                child: SingleChildScrollView(
-                  scrollDirection: Axis.vertical,
-                  child: DataTable(
-                    headingRowColor:
-                    MaterialStateProperty.all(const Color(0xFFEFEFF4)),
-                    columns: const [
-                      DataColumn(
-                          label: Text('SKU',
-                              style: TextStyle(fontWeight: FontWeight.w700))),
-                      DataColumn(
-                          label: Text('SOQ',
-                              style: TextStyle(fontWeight: FontWeight.w700))),
-                      DataColumn(
-                          label: Text('Scanned',
-                              style: TextStyle(fontWeight: FontWeight.w700))),
-                      DataColumn(
-                          label: Text('U/M',
-                              style: TextStyle(fontWeight: FontWeight.w700))),
-                    ],
-                    rows: List.generate(lines.length, (i) {
-                      final line = lines[i];
-                      final selected = i == selectedIndex;
-                      return DataRow(
-                        selected: selected,
-                        color: MaterialStateProperty.resolveWith<Color?>(
-                                (states) => selected ? const Color(0xFFE0ECFF) : null),
-                        onSelectChanged: (_) => _selectRow(i),
-                        cells: [
-                          DataCell(Text(line.code)),
-                          DataCell(Text('${line.orderedQty}')),
-                          DataCell(Text('${line.scanned + line.tempScanned}')),
-                          DataCell(Text(line.unit)),
-                        ],
-                      );
-                    }),
+        body: Stack(
+          children: [
+            isLoading
+                ? const Center(child: CircularProgressIndicator())
+                : Column(
+              children: [
+                Container(
+                  width: double.infinity,
+                  color: const Color(0xFFEFF6FF),
+                  padding:
+                  const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                  child: Text(
+                    "Pending Qty (for scan): $_pendingQty",
+                    style: const TextStyle(
+                        fontWeight: FontWeight.w700,
+                        color: Color(0xFF1D4ED8)),
                   ),
                 ),
-              ),
-              Container(
-                width: double.infinity,
-                padding: EdgeInsets.symmetric(
-                  horizontal: isTablet ? size.width * 0.06 : 16,
-                  vertical: 14,
-                ),
-                decoration: const BoxDecoration(
-                  color: Colors.white,
-                  border: Border(top: BorderSide(color: Color(0xFFE6E6E6))),
-                ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Wrap(
-                      spacing: 10,
-                      runSpacing: 10,
-                      crossAxisAlignment: WrapCrossAlignment.center,
-                      children: [
-                        _chipButton('Clear Line', onTap: _clearLine),
-                        const Text('Qty:',
-                            style: TextStyle(fontWeight: FontWeight.w600)),
-                        _qtyBox(isTablet: isTablet), // manual + OK + Reset
-                        OutlinedButton(
-                          onPressed: _resetPendingQty,
-                          child: const Text('Reset'),
-                        ),
+                Expanded(
+                  child: SingleChildScrollView(
+                    scrollDirection: Axis.vertical,
+                    child: DataTable(
+                      headingRowColor:
+                      MaterialStateProperty.all(const Color(0xFFEFEFF4)),
+                      columns: const [
+                        DataColumn(
+                            label: Text('SKU',
+                                style:
+                                TextStyle(fontWeight: FontWeight.w700))),
+                        DataColumn(
+                            label: Text('SOQ',
+                                style:
+                                TextStyle(fontWeight: FontWeight.w700))),
+                        DataColumn(
+                            label: Text('Scanned',
+                                style:
+                                TextStyle(fontWeight: FontWeight.w700))),
+                        DataColumn(
+                            label: Text('U/M',
+                                style:
+                                TextStyle(fontWeight: FontWeight.w700))),
                       ],
+                      rows: List.generate(lines.length, (i) {
+                        final line = lines[i];
+                        final selected = i == selectedIndex;
+                        return DataRow(
+                          selected: selected,
+                          color: MaterialStateProperty.resolveWith<Color?>(
+                                  (states) =>
+                              selected ? const Color(0xFFE0ECFF) : null),
+                          onSelectChanged: (_) => _selectRow(i),
+                          cells: [
+                            DataCell(Text(line.code)),
+                            DataCell(Text('${line.orderedQty}')),
+                            DataCell(Text('${line.scanned + line.tempScanned}')),
+                            DataCell(Text(line.unit)),
+                          ],
+                        );
+                      }),
                     ),
-                    const SizedBox(height: 12),
-                    Row(
-                      children: [
-                        Expanded(
-                          child: OutlinedButton(
-                            onPressed: _confirmCancel,
-                            style: OutlinedButton.styleFrom(
-                              padding: const EdgeInsets.symmetric(vertical: 14),
-                              shape: RoundedRectangleBorder(
-                                  borderRadius: BorderRadius.circular(10)),
-                            ),
-                            child: const Text('Cancel'),
-                          ),
-                        ),
-                        const SizedBox(width: 12),
-                        Expanded(
-                          child: ElevatedButton(
-                            onPressed: _confirmDone,
+                  ),
+                ),
+
+                // Description/details card for selected item
+                _selectedLineInfoCard(),
+
+                Container(
+                  width: double.infinity,
+                  padding: EdgeInsets.symmetric(
+                    horizontal: isTablet ? size.width * 0.06 : 16,
+                    vertical: 14,
+                  ),
+                  decoration: const BoxDecoration(
+                    color: Colors.white,
+                    border: Border(top: BorderSide(color: Color(0xFFE6E6E6))),
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Wrap(
+                        spacing: 10,
+                        runSpacing: 10,
+                        crossAxisAlignment: WrapCrossAlignment.center,
+                        children: [
+                          _chipButton('Clear Line', onTap: _clearLine),
+                          const Text('Qty:',
+                              style:
+                              TextStyle(fontWeight: FontWeight.w600)),
+                          _qtyBox(isTablet: isTablet), // manual field + OK
+                          // ADD button (adds to current now)
+                          ElevatedButton.icon(
+                            onPressed: (selectedLine == null)
+                                ? null
+                                : _addQtyToSelectedLine,
+                            icon: const Icon(Icons.add_circle),
+                            label: const Text('ADD'),
                             style: ElevatedButton.styleFrom(
                               backgroundColor: const Color(0xFF2F76D2),
-                              padding: const EdgeInsets.symmetric(vertical: 14),
+                              foregroundColor: Colors.white,
+                              padding: const EdgeInsets.symmetric(
+                                  horizontal: 14, vertical: 10),
                               shape: RoundedRectangleBorder(
-                                  borderRadius: BorderRadius.circular(10)),
-                            ),
-                            child: const Text(
-                              'Done',
-                              style: TextStyle(
-                                  color: Colors.white, fontWeight: FontWeight.w700),
+                                  borderRadius: BorderRadius.circular(8)),
                             ),
                           ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 50)
-                  ],
+                          OutlinedButton(
+                            onPressed: _resetPendingQty,
+                            child: const Text('Reset'),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 12),
+                      Row(
+                        children: [
+                          Expanded(
+                            child: OutlinedButton(
+                              onPressed: () async {
+                                final ok = await _showExitConfirmDialog();
+                                if (ok && mounted) Navigator.pop(context);
+                              },
+                              style: OutlinedButton.styleFrom(
+                                padding:
+                                const EdgeInsets.symmetric(vertical: 14),
+                                shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(10)),
+                              ),
+                              child: const Text('Cancel'),
+                            ),
+                          ),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: ElevatedButton(
+                              onPressed: _confirmDone,
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: const Color(0xFF2F76D2),
+                                padding:
+                                const EdgeInsets.symmetric(vertical: 14),
+                                shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(10)),
+                              ),
+                              child: const Text(
+                                'Done',
+                                style: TextStyle(
+                                    color: Colors.white,
+                                    fontWeight: FontWeight.w700),
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 50)
+                    ],
+                  ),
+                ),
+              ],
+            ),
+            // Hidden TextField for barcode input
+            Positioned(
+              left: -100,
+              top: -100,
+              child: SizedBox(
+                width: 1,
+                height: 1,
+                child: TextField(
+                  controller: barcodeCtrl,
+                  focusNode: _barcodeFocus,
+                  autofocus: false,
+                  enableInteractiveSelection: false,
+                  showCursor: false,
+                  readOnly: false,
+                  textInputAction: TextInputAction.done,
+                  decoration: const InputDecoration.collapsed(hintText: ''),
+                  onSubmitted: (v) => _processBarcode(v),
                 ),
               ),
-            ],
-          ),
-          // Hidden TextField for barcode input
-          Positioned(
-            left: -100,
-            top: -100,
-            child: SizedBox(
-              width: 1,
-              height: 1,
-              child: TextField(
-                controller: barcodeCtrl,
-                focusNode: _barcodeFocus,
-                autofocus: false,
-                enableInteractiveSelection: false,
-                showCursor: false,
-                readOnly: false,
-                textInputAction: TextInputAction.done,
-                decoration: const InputDecoration.collapsed(hintText: ''),
-                onSubmitted: (v) => _processBarcode(v),
-              ),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }
