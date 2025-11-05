@@ -51,7 +51,7 @@ class _ScanScreenState extends State<ScanScreen> {
 
     // Fallback listener for scanners that don't send Enter
     barcodeCtrl.addListener(() {
-      final text = barcodeCtrl.text;
+      final text = barcodeCtrl.text.trim();
       if (text.isNotEmpty) {
         _processBarcode(text);
       }
@@ -131,8 +131,14 @@ class _ScanScreenState extends State<ScanScreen> {
   void _selectRow(int index) {
     setState(() {
       selectedIndex = index;
-      // selection does not affect pending qty
     });
+  }
+
+  /// فتح التفاصيل بالضغط المطوّل
+  void _onRowLongPress(int index) {
+    _selectRow(index);
+    final line = selectedLine;
+    if (line != null) _openLineDetailsSheet(line);
   }
 
   /// Save pending qty manually (OK button)
@@ -213,7 +219,7 @@ class _ScanScreenState extends State<ScanScreen> {
     }
 
     setState(() {
-      line.tempScanned += adding; // ← ← الإضافة بدل التعيين
+      line.tempScanned += adding; // ← الإضافة بدل التعيين
     });
 
     qtyCtrl.clear();
@@ -528,67 +534,65 @@ class _ScanScreenState extends State<ScanScreen> {
     );
   }
 
-  // === Selected line info card (description + numbers) ===
-  Widget _selectedLineInfoCard() {
-    final line = selectedLine;
-    if (line == null) {
-      return Container(
-        width: double.infinity,
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-        child: const Text(
-          "Select an item to see details here…",
-          style: TextStyle(color: Colors.grey),
-        ),
-      );
-    }
-
+  /// ===== Bottom Sheet: Line Details =====
+  void _openLineDetailsSheet(_SoLine line) {
     final current = line.scanned + line.tempScanned;
     final remaining = (line.orderedQty - current);
     final safeRemaining = remaining < 0 ? 0 : remaining;
 
-    return Container(
-      width: double.infinity,
-      margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: const Color(0xFFF7FAFF),
-        border: Border.all(color: const Color(0xFFE3EAF6)),
-        borderRadius: BorderRadius.circular(12),
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: false,
+      backgroundColor: Colors.white,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
       ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      builder: (_) {
+        return Padding(
+          padding: const EdgeInsets.fromLTRB(16, 10, 16, 16),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text(
-                "SKU: ${line.code}",
-                style: const TextStyle(fontWeight: FontWeight.w700),
+              Center(
+                child: Container(
+                  width: 40,
+                  height: 4,
+                  margin: const EdgeInsets.only(bottom: 10),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFE0E0E0),
+                    borderRadius: BorderRadius.circular(2),
+                  ),
+                ),
               ),
-              Text(
-                "U/M: ${line.unit}",
-                style: const TextStyle(color: Colors.black54),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Text("SKU: ${line.code}", style: const TextStyle(fontWeight: FontWeight.w700)),
+                  Text("U/M: ${line.unit}", style: const TextStyle(color: Colors.black54)),
+                ],
               ),
+              const SizedBox(height: 8),
+              Text(
+                line.desc.isEmpty ? "No description" : line.desc,
+                style: const TextStyle(fontSize: 14),
+              ),
+              const SizedBox(height: 12),
+              Wrap(
+                spacing: 16,
+                runSpacing: 8,
+                children: [
+                  _pill("Ordered", "${line.orderedQty}"),
+                  _pill("Scanned", "$current"),
+                  _pill("Remaining", "$safeRemaining"),
+                ],
+              ),
+              const SizedBox(height: 10),
             ],
           ),
-          const SizedBox(height: 6),
-          Text(
-            line.desc.isEmpty ? "No description" : line.desc,
-            style: const TextStyle(fontSize: 14),
-          ),
-          const SizedBox(height: 10),
-          Wrap(
-            spacing: 16,
-            runSpacing: 8,
-            children: [
-              _pill("Ordered", "${line.orderedQty}"),
-              _pill("Scanned", "$current"),
-              _pill("Remaining", "$safeRemaining"),
-            ],
-          ),
-        ],
-      ),
-    );
+        );
+      },
+    ).whenComplete(_ensureFocus);
   }
 
   Widget _pill(String label, String value) {
@@ -640,6 +644,7 @@ class _ScanScreenState extends State<ScanScreen> {
                 ? const Center(child: CircularProgressIndicator())
                 : Column(
               children: [
+                // Pending qty banner
                 Container(
                   width: double.infinity,
                   color: const Color(0xFFEFF6FF),
@@ -686,10 +691,22 @@ class _ScanScreenState extends State<ScanScreen> {
                               selected ? const Color(0xFFE0ECFF) : null),
                           onSelectChanged: (_) => _selectRow(i),
                           cells: [
-                            DataCell(Text(line.code)),
-                            DataCell(Text('${line.orderedQty}')),
-                            DataCell(Text('${line.scanned + line.tempScanned}')),
-                            DataCell(Text(line.unit)),
+                            DataCell(
+                              Text(line.code),
+                              onLongPress: () => _onRowLongPress(i),
+                            ),
+                            DataCell(
+                              Text('${line.orderedQty}'),
+                              onLongPress: () => _onRowLongPress(i),
+                            ),
+                            DataCell(
+                              Text('${line.scanned + line.tempScanned}'),
+                              onLongPress: () => _onRowLongPress(i),
+                            ),
+                            DataCell(
+                              Text(line.unit),
+                              onLongPress: () => _onRowLongPress(i),
+                            ),
                           ],
                         );
                       }),
@@ -697,10 +714,9 @@ class _ScanScreenState extends State<ScanScreen> {
                   ),
                 ),
 
-                // Description/details card for selected item
-                _selectedLineInfoCard(),
-
-                Container(
+                // === Footer controls (Qty/ADD/Details/Reset/Cancel/Done) ===
+                Container
+                  (
                   width: double.infinity,
                   padding: EdgeInsets.symmetric(
                     horizontal: isTablet ? size.width * 0.06 : 16,
@@ -738,6 +754,14 @@ class _ScanScreenState extends State<ScanScreen> {
                               shape: RoundedRectangleBorder(
                                   borderRadius: BorderRadius.circular(8)),
                             ),
+                          ),
+                          // Details button opens bottom sheet
+                          OutlinedButton.icon(
+                            onPressed: (selectedLine == null)
+                                ? null
+                                : () => _openLineDetailsSheet(selectedLine!),
+                            icon: const Icon(Icons.info_outline),
+                            label: const Text('Details'),
                           ),
                           OutlinedButton(
                             onPressed: _resetPendingQty,
@@ -912,21 +936,18 @@ class _SoLine {
 
   factory _SoLine.fromJson(Map<String, dynamic> json) {
     final first = (json['firstScan'] as num?)?.toInt() ??
-        (json['firstscan'] as num?)?.toInt() ??
-        0;
+        (json['firstscan'] as num?)?.toInt() ?? 0;
     final second = (json['secondScan'] as num?)?.toInt() ??
         (json['secondscan'] as num?)?.toInt() ??
-        (json['scondScan'] as num?)?.toInt() ??
-        0;
+        (json['scondScan'] as num?)?.toInt() ?? 0;
 
     return _SoLine(
       txnid: json['txnid']?.toString() ?? '',
       code: json['item']?.toString() ?? '',
       desc: json['description']?.toString() ?? '',
       orderedQty: (json['orderdQty'] as num?)?.toInt() ??
-          (json['orderedQty'] as num?)?.toInt() ??
-          0,
-      rate: (json['rate'] as num?)?.toDouble() ?? 0,
+          (json['orderedQty'] as num?)?.toInt() ?? 0,
+      rate: (json['rate'] as num?)?.toDouble() ?? 0.0,
       unit: json['unit']?.toString() ?? 'PCS',
       scanned: first,
       tempScanned: second,
