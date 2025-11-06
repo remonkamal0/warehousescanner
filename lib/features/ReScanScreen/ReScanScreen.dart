@@ -79,7 +79,7 @@ class _ReScanScreenState extends State<ReScanScreen> {
         setState(() {
           lines = data.map((e) => _SoLine.fromJson(e)).toList();
 
-          // reset all lines on entry + reset pending qty
+          // لو هدفك إعادة مسح من الصفر، سيب التصفير
           for (final l in lines) {
             l.scanned = 0;
             l.tempScanned = 0;
@@ -117,7 +117,7 @@ class _ReScanScreenState extends State<ReScanScreen> {
     _ensureBarcodeFocus();
   }
 
-  /// Long-press to open details bottom sheet
+  /// Long-press to open details bottom sheet (اختياري)
   void _onRowLongPress(int index) {
     _selectRow(index);
     if (selectedLine != null) {
@@ -194,7 +194,7 @@ class _ReScanScreenState extends State<ReScanScreen> {
 
     if (totalIfAdd > line.orderedQty) {
       _showOverDialog(ordered: line.orderedQty, current: current, adding: adding);
-      // لو عايز تمنع الإضافة عند الزيادة اعمل return;
+      // لمنع الإضافة عند الزيادة اعمل return;
     }
 
     setState(() {
@@ -446,7 +446,7 @@ class _ReScanScreenState extends State<ReScanScreen> {
     _ensureBarcodeFocus();
   }
 
-  /// ===== Bottom Sheet: Line Details =====
+  /// ===== Bottom Sheet: Line Details (اختياري) =====
   void _openLineDetailsSheet(_SoLine line) {
     final current = line.scanned + line.tempScanned;
     final remaining = (line.orderedQty - current).clamp(-999999, 999999);
@@ -580,7 +580,8 @@ class _ReScanScreenState extends State<ReScanScreen> {
                   Expanded(
                     child: SingleChildScrollView(
                       scrollDirection: Axis.vertical,
-                      child: DataTable(
+                      child:DataTable(
+                        showCheckboxColumn: true, // مهم
                         headingRowColor: MaterialStateProperty.all(const Color(0xFFEFEFF4)),
                         columns: const [
                           DataColumn(label: Text('SKU', style: TextStyle(fontWeight: FontWeight.w700))),
@@ -596,34 +597,22 @@ class _ReScanScreenState extends State<ReScanScreen> {
                             color: MaterialStateProperty.resolveWith<Color?>(
                                   (states) => selected ? const Color(0xFFE0ECFF) : null,
                             ),
+                            // مش محتاج Checkbox — اللمس على أي خلية هيختار الصف
                             onSelectChanged: (_) => _selectRow(i),
-                            // فتح التفاصيل بالضغط المطوّل
                             cells: [
-                              DataCell(
-                                Text(line.code),
-                                onLongPress: () => _onRowLongPress(i),
-                              ),
-                              DataCell(
-                                Text('${line.orderedQty}'),
-                                onLongPress: () => _onRowLongPress(i),
-                              ),
-                              DataCell(
-                                Text('${line.scanned + line.tempScanned}'),
-                                onLongPress: () => _onRowLongPress(i),
-                              ),
-                              DataCell(
-                                Text(line.unit),
-                                onLongPress: () => _onRowLongPress(i),
-                              ),
+                              DataCell(Text(line.code),        onTap: () => _selectRow(i)),
+                              DataCell(Text('${line.orderedQty}'), onTap: () => _selectRow(i)),
+                              DataCell(Text('${line.scanned + line.tempScanned}'), onTap: () => _selectRow(i)),
+                              DataCell(Text(line.unit),        onTap: () => _selectRow(i)),
                             ],
                           );
                         }),
-                      ),
+                      )
+
                     ),
                   ),
 
-                  // (تم حذف الكارت الثابت)
-
+                  // ===== Footer with qty controls + ONE-LINE DESCRIPTION + actions =====
                   Container(
                     width: double.infinity,
                     padding: EdgeInsets.symmetric(
@@ -642,16 +631,13 @@ class _ReScanScreenState extends State<ReScanScreen> {
                           runSpacing: 10,
                           crossAxisAlignment: WrapCrossAlignment.center,
                           children: [
-                            _chipButton('Clear Line', onTap: () {
+                            _chipButton('Clr Line', onTap: () {
                               if (selectedLine == null) return;
                               setState(() {
                                 selectedLine!.tempScanned = 0;
                               });
                               _ensureBarcodeFocus();
                             }),
-                            const Text('Qty:', style: TextStyle(fontWeight: FontWeight.w600)),
-                            _qtyBox(isTablet: isTablet),
-
                             ElevatedButton.icon(
                               onPressed: (selectedLine == null) ? null : _addQtyToSelectedLine,
                               icon: const Icon(Icons.add_circle),
@@ -663,15 +649,18 @@ class _ReScanScreenState extends State<ReScanScreen> {
                                 shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
                               ),
                             ),
+                            const Text('Qty:', style: TextStyle(fontWeight: FontWeight.w600)),
+                            _qtyBox(isTablet: isTablet),
 
-                            // زر Details لفتح الـBottom Sheet
-                            OutlinedButton.icon(
-                              onPressed: (selectedLine == null)
-                                  ? null
-                                  : () => _openLineDetailsSheet(selectedLine!),
-                              icon: const Icon(Icons.info_outline),
-                              label: const Text('Details'),
-                            ),
+
+
+                            // OutlinedButton.icon(
+                            //   onPressed: (selectedLine == null)
+                            //       ? null
+                            //       : () => _openLineDetailsSheet(selectedLine!),
+                            //   icon: const Icon(Icons.info_outline),
+                            //   label: const Text('Details'),
+                            // ),
 
                             OutlinedButton(
                               onPressed: _resetPendingQty,
@@ -679,7 +668,20 @@ class _ReScanScreenState extends State<ReScanScreen> {
                             ),
                           ],
                         ),
+
+                        const SizedBox(height: 10),
+
+                        // ======= ONE-LINE DESCRIPTION =======
+                        if (selectedLine != null)
+                          Text(
+                            selectedLine!.desc.isEmpty ? '' : selectedLine!.desc,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
+                          ),
+
                         const SizedBox(height: 12),
+
                         Row(
                           children: [
                             Expanded(
@@ -839,6 +841,7 @@ class _SoLine {
   }) : barcodes = barcodes ?? [];
 
   factory _SoLine.fromJson(Map<String, dynamic> json) {
+    // ✅ بدون تعديل (2): ما زلنا نقرأ firstScan / secondScan
     final first = (json['firstScan'] as num?)?.toInt() ??
         (json['firstscan'] as num?)?.toInt() ?? 0;
     final second = (json['secondScan'] as num?)?.toInt() ??
