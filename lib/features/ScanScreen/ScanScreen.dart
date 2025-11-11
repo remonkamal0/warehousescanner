@@ -77,12 +77,9 @@ class _ScanScreenState extends State<ScanScreen> {
     SystemChannels.textInput.invokeMethod('TextInput.hide');
   }
 
-  // استهلاك وتصفير pending qty
+  // استهلاك وتصفير pending qty (بدون أي SnackBar)
   void _consumePendingQty() {
     setState(() => _pendingQty = 0);
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text("✅ Pending Qty consumed and reset to 0")),
-    );
     _ensureFocus();
   }
 
@@ -123,8 +120,7 @@ class _ScanScreenState extends State<ScanScreen> {
       }
     } catch (e) {
       setState(() => isLoading = false);
-      ScaffoldMessenger.of(context)
-          .showSnackBar(SnackBar(content: Text("Error: $e")));
+      // تم إزالة أي SnackBar
     }
   }
 
@@ -134,39 +130,29 @@ class _ScanScreenState extends State<ScanScreen> {
     });
   }
 
-  /// حفظ الكمية المعلّقة (OK)
+  /// حفظ الكمية المعلّقة (OK) — بدون SnackBar
   void _savePendingQty() {
     final val = int.tryParse(qtyCtrl.text.trim());
     if (val == null || val <= 0) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text("⚠️ Enter a valid quantity (> 0) then press OK")),
-      );
       FocusScope.of(context).requestFocus(_qtyFocus);
       return;
     }
     setState(() {
       _pendingQty = val;
     });
-
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text("✅ Pending Qty saved: $_pendingQty")),
-    );
     qtyCtrl.clear();
     Future.delayed(const Duration(milliseconds: 120), _ensureFocus);
   }
 
-  /// تصفير الكمية المعلّقة
+  /// تصفير الكمية المعلّقة — بدون SnackBar
   void _resetPendingQty() {
     setState(() {
       _pendingQty = 0;
     });
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text("Pending Qty reset to 0")),
-    );
     _ensureFocus();
   }
 
-  /// مسح مؤقت السطر الحالي
+  /// مسح مؤقت السطر الحالي — بدون SnackBar
   void _clearLine() {
     if (selectedLine == null) return;
     setState(() {
@@ -175,12 +161,9 @@ class _ScanScreenState extends State<ScanScreen> {
     Future.delayed(const Duration(milliseconds: 70), _ensureFocus);
   }
 
-  /// زر ADD: يضيف للكمية الحالية +=
+  /// زر ADD: يضيف للكمية الحالية += — بدون SnackBar
   void _addQtyToSelectedLine() {
     if (selectedLine == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text("⚠️ Select a line first")),
-      );
       return;
     }
 
@@ -193,9 +176,6 @@ class _ScanScreenState extends State<ScanScreen> {
     } else {
       final captured = _bootstrapPendingQtyIfSmall();
       if (!captured) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text("⚠️ Enter qty then press ADD")),
-        );
         FocusScope.of(context).requestFocus(_qtyFocus);
         return;
       }
@@ -218,10 +198,6 @@ class _ScanScreenState extends State<ScanScreen> {
 
     qtyCtrl.clear();
     _consumePendingQty();
-
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text("✅ Added $adding to ${line.code}")),
-    );
   }
 
   Future<void> _done() async {
@@ -229,9 +205,6 @@ class _ScanScreenState extends State<ScanScreen> {
     final userID = authProvider.userID;
 
     if (userID == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text("⚠️ User not logged in")),
-      );
       return;
     }
 
@@ -254,9 +227,6 @@ class _ScanScreenState extends State<ScanScreen> {
 
       if (response.statusCode == 200) {
         if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text("The data has been sent successfully. ✅")),
-          );
           Navigator.pop(context, true);
         }
       } else {
@@ -265,9 +235,7 @@ class _ScanScreenState extends State<ScanScreen> {
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text("Error: $e")),
-        );
+        // بدون SnackBar
       }
     }
   }
@@ -392,36 +360,27 @@ class _ScanScreenState extends State<ScanScreen> {
     return result ?? false;
   }
 
-  /// Bootstrap: لو الحقل فاضي = 1، أو 1..3
+  /// Bootstrap: لو الحقل فاضي = 1، أو 1..3 — بدون SnackBar
   bool _bootstrapPendingQtyIfSmall() {
     final raw = qtyCtrl.text.trim();
     if (raw.isEmpty) {
       setState(() => _pendingQty = 1);
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text("✅ Pending Qty auto-set to 1")),
-      );
       return true;
     }
     final v = int.tryParse(raw);
     if (v != null && v >= 1 && v <= 3) {
       setState(() => _pendingQty = v);
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text("✅ Pending Qty auto-set to $_pendingQty")),
-      );
       qtyCtrl.clear();
       return true;
     }
     return false;
   }
 
-  /// Scan: يضيف الكمية المعلّقة للسطر المطابق
+  /// Scan: يضيف الكمية المعلّقة للسطر المطابق — بدون SnackBar
   void _applyScannedBarcode(String barcode) {
     if (_pendingQty <= 0) {
       final captured = _bootstrapPendingQtyIfSmall();
       if (!captured) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text("⚠️ Enter quantity and press OK first")),
-        );
         _ensureFocus();
         return;
       }
@@ -563,7 +522,7 @@ class _ScanScreenState extends State<ScanScreen> {
                 fontSize: isTablet ? 18 : 16,
               ),
               decoration: const InputDecoration(
-                hintText: 'Enter qty',
+                hintText: 'qty',
                 isDense: true,
                 border: InputBorder.none,
                 contentPadding: EdgeInsets.symmetric(vertical: 8),
@@ -625,32 +584,38 @@ class _ScanScreenState extends State<ScanScreen> {
                 Container(
                   width: double.infinity,
                   color: const Color(0xFFEFF6FF),
-                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                  padding:
+                  const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
                   child: Text(
                     "Pending Qty (for scan): $_pendingQty",
                     style: const TextStyle(
-                        fontWeight: FontWeight.w700, color: Color(0xFF1D4ED8)),
+                        fontWeight: FontWeight.w700,
+                        color: Color(0xFF1D4ED8)),
                   ),
                 ),
                 Expanded(
                   child: SingleChildScrollView(
                     scrollDirection: Axis.vertical,
                     child: DataTable(
-                      headingRowColor:
-                      MaterialStateProperty.all(const Color(0xFFEFEFF4)),
+                      headingRowColor: MaterialStateProperty.all(
+                          const Color(0xFFEFEFF4)),
                       columns: const [
                         DataColumn(
                             label: Text('SKU',
-                                style: TextStyle(fontWeight: FontWeight.w700))),
+                                style: TextStyle(
+                                    fontWeight: FontWeight.w700))),
                         DataColumn(
                             label: Text('SOQ',
-                                style: TextStyle(fontWeight: FontWeight.w700))),
+                                style: TextStyle(
+                                    fontWeight: FontWeight.w700))),
                         DataColumn(
                             label: Text('Scanned',
-                                style: TextStyle(fontWeight: FontWeight.w700))),
+                                style: TextStyle(
+                                    fontWeight: FontWeight.w700))),
                         DataColumn(
                             label: Text('U/M',
-                                style: TextStyle(fontWeight: FontWeight.w700))),
+                                style: TextStyle(
+                                    fontWeight: FontWeight.w700))),
                       ],
                       rows: List.generate(lines.length, (i) {
                         final line = lines[i];
@@ -664,7 +629,8 @@ class _ScanScreenState extends State<ScanScreen> {
                           cells: [
                             DataCell(Text(line.code)),
                             DataCell(Text('${line.orderedQty}')),
-                            DataCell(Text('${line.scanned + line.tempScanned}')),
+                            DataCell(
+                                Text('${line.scanned + line.tempScanned}')),
                             DataCell(Text(line.unit)),
                           ],
                         );
@@ -682,20 +648,22 @@ class _ScanScreenState extends State<ScanScreen> {
                   ),
                   decoration: const BoxDecoration(
                       color: Colors.white,
-                      border: Border(top: BorderSide(color: Color(0xFFE6E6E6)))),
+                      border:
+                      Border(top: BorderSide(color: Color(0xFFE6E6E6)))),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       // صف الأدوات
                       Wrap(
-                        spacing: 10,
-                        runSpacing: 10,
+                        spacing: 3,
+                        runSpacing: 3,
                         crossAxisAlignment: WrapCrossAlignment.center,
                         children: [
-                          _chipButton('Clr Line', onTap: _clearLine),
+                          _chipButton('Clr', onTap: _clearLine),
                           ElevatedButton(
-                            onPressed:
-                            (selectedLine == null) ? null : _addQtyToSelectedLine,
+                            onPressed: (selectedLine == null)
+                                ? null
+                                : _addQtyToSelectedLine,
                             style: ElevatedButton.styleFrom(
                               backgroundColor: const Color(0xFF2F76D2),
                               foregroundColor: Colors.white,
@@ -704,14 +672,12 @@ class _ScanScreenState extends State<ScanScreen> {
                               shape: RoundedRectangleBorder(
                                   borderRadius: BorderRadius.circular(8)),
                             ),
-                            child: const Text('Add'),
+                            child: const Text(''),
                           ),
-                          const Text('Qty:',
-                              style: TextStyle(fontWeight: FontWeight.w600)),
                           _qtyBox(isTablet: isTablet),
                           OutlinedButton(
                             onPressed: _resetPendingQty,
-                            child: const Text('Reset'),
+                            child: const Text('Rest'),
                           ),
                         ],
                       ),
@@ -738,10 +704,11 @@ class _ScanScreenState extends State<ScanScreen> {
                             child: OutlinedButton(
                               onPressed: _confirmCancel,
                               style: OutlinedButton.styleFrom(
-                                padding:
-                                const EdgeInsets.symmetric(vertical: 14),
+                                padding: const EdgeInsets.symmetric(
+                                    vertical: 14),
                                 shape: RoundedRectangleBorder(
-                                    borderRadius: BorderRadius.circular(10)),
+                                    borderRadius:
+                                    BorderRadius.circular(10)),
                               ),
                               child: const Text('Cancel'),
                             ),
@@ -752,10 +719,11 @@ class _ScanScreenState extends State<ScanScreen> {
                               onPressed: _confirmDone,
                               style: ElevatedButton.styleFrom(
                                 backgroundColor: const Color(0xFF2F76D2),
-                                padding:
-                                const EdgeInsets.symmetric(vertical: 14),
+                                padding: const EdgeInsets.symmetric(
+                                    vertical: 14),
                                 shape: RoundedRectangleBorder(
-                                    borderRadius: BorderRadius.circular(10)),
+                                    borderRadius:
+                                    BorderRadius.circular(10)),
                               ),
                               child: const Text(
                                 'Done',

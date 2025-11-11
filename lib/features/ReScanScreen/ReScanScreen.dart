@@ -79,7 +79,7 @@ class _ReScanScreenState extends State<ReScanScreen> {
         setState(() {
           lines = data.map((e) => _SoLine.fromJson(e)).toList();
 
-          // لو هدفك إعادة مسح من الصفر، سيب التصفير
+          // إعادة المسح من الصفر
           for (final l in lines) {
             l.scanned = 0;
             l.tempScanned = 0;
@@ -90,22 +90,13 @@ class _ReScanScreenState extends State<ReScanScreen> {
           isLoading = false;
         });
 
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('All scans reset. Start rescanning now.')),
-          );
-        }
-
         _ensureBarcodeFocus();
       } else {
         throw Exception("Failed to load sales order lines");
       }
     } catch (e) {
       setState(() => isLoading = false);
-      if (mounted) {
-        ScaffoldMessenger.of(context)
-            .showSnackBar(SnackBar(content: Text("Error: $e")));
-      }
+      // (تم حذف SnackBar)
       _ensureBarcodeFocus();
     }
   }
@@ -129,43 +120,33 @@ class _ReScanScreenState extends State<ReScanScreen> {
   void _savePendingQty() {
     final val = int.tryParse(qtyCtrl.text.trim());
     if (val == null || val <= 0) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text("⚠️ Enter a valid quantity (> 0) then press OK")),
-      );
+      // (تم حذف SnackBar التحذيري)
       FocusScope.of(context).requestFocus(_qtyFocus);
       return;
     }
     setState(() => _pendingQty = val);
 
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text("✅ Pending Qty saved: $_pendingQty")),
-    );
+    // (تم حذف SnackBar التأكيدي)
     qtyCtrl.clear();
     Future.delayed(const Duration(milliseconds: 100), _ensureBarcodeFocus);
   }
 
   void _resetPendingQty() {
     setState(() => _pendingQty = 0);
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text("Pending Qty reset to 0")),
-    );
+    // (تم حذف SnackBar)
     _ensureBarcodeFocus();
   }
 
   void _consumePendingQty() {
     setState(() => _pendingQty = 0);
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text("✅ Pending Qty used and reset to 0")),
-    );
+    // (تم حذف SnackBar)
     _ensureBarcodeFocus();
   }
 
   // ADD: add pending/typed qty to selected line (for items without barcode)
   void _addQtyToSelectedLine() {
     if (selectedLine == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text("⚠️ Select a line first")),
-      );
+      // (تم حذف SnackBar "Select a line first")
       _ensureBarcodeFocus();
       return;
     }
@@ -179,9 +160,7 @@ class _ReScanScreenState extends State<ReScanScreen> {
     } else {
       final captured = _bootstrapPendingQtyIfSmall();
       if (!captured) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text("⚠️ Enter qty then press ADD")),
-        );
+        // (تم حذف SnackBar "Enter qty then press ADD")
         FocusScope.of(context).requestFocus(_qtyFocus);
         return;
       }
@@ -203,10 +182,6 @@ class _ReScanScreenState extends State<ReScanScreen> {
 
     qtyCtrl.clear();
     _consumePendingQty();
-
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text("✅ Added $adding to ${line.code}")),
-    );
   }
 
   Future<void> _done() async {
@@ -219,9 +194,7 @@ class _ReScanScreenState extends State<ReScanScreen> {
     final auth = context.read<AuthProvider>();
     final userId = auth.userID;
     if (userId == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text("⚠️ User not logged in")),
-      );
+      // (تم حذف SnackBar "User not logged in")
       _ensureBarcodeFocus();
       return;
     }
@@ -252,9 +225,7 @@ class _ReScanScreenState extends State<ReScanScreen> {
 
       if (response.statusCode == 200) {
         if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text("The data has been sent successfully.✅")),
-          );
+          // (تم حذف SnackBar النجاح)
           Navigator.pop(context, true);
         }
       } else {
@@ -264,8 +235,7 @@ class _ReScanScreenState extends State<ReScanScreen> {
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context)
-            .showSnackBar(SnackBar(content: Text("Error: $e")));
+        // (تم حذف SnackBar الخطأ)
       }
     } finally {
       _ensureBarcodeFocus();
@@ -393,17 +363,13 @@ class _ReScanScreenState extends State<ReScanScreen> {
     final raw = qtyCtrl.text.trim();
     if (raw.isEmpty) {
       setState(() => _pendingQty = 1);
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text("✅ Pending Qty auto-set to 1")),
-      );
+      // (تم حذف SnackBar التأكيدي)
       return true;
     }
     final v = int.tryParse(raw);
     if (v != null && v >= 1 && v <= 3) {
       setState(() => _pendingQty = v);
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text("✅ Pending Qty auto-set to $_pendingQty")),
-      );
+      // (تم حذف SnackBar التأكيدي)
       qtyCtrl.clear();
       return true;
     }
@@ -414,9 +380,7 @@ class _ReScanScreenState extends State<ReScanScreen> {
     if (_pendingQty <= 0) {
       final captured = _bootstrapPendingQtyIfSmall();
       if (!captured) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text("⚠️ Enter quantity and press OK first")),
-        );
+        // (تم حذف SnackBar التحذيري)
         _ensureBarcodeFocus();
         return;
       }
@@ -580,8 +544,8 @@ class _ReScanScreenState extends State<ReScanScreen> {
                   Expanded(
                     child: SingleChildScrollView(
                       scrollDirection: Axis.vertical,
-                      child:DataTable(
-                        showCheckboxColumn: true, // مهم
+                      child: DataTable(
+                        showCheckboxColumn: true,
                         headingRowColor: MaterialStateProperty.all(const Color(0xFFEFEFF4)),
                         columns: const [
                           DataColumn(label: Text('SKU', style: TextStyle(fontWeight: FontWeight.w700))),
@@ -597,7 +561,6 @@ class _ReScanScreenState extends State<ReScanScreen> {
                             color: MaterialStateProperty.resolveWith<Color?>(
                                   (states) => selected ? const Color(0xFFE0ECFF) : null,
                             ),
-                            // مش محتاج Checkbox — اللمس على أي خلية هيختار الصف
                             onSelectChanged: (_) => _selectRow(i),
                             cells: [
                               DataCell(Text(line.code),        onTap: () => _selectRow(i)),
@@ -607,8 +570,7 @@ class _ReScanScreenState extends State<ReScanScreen> {
                             ],
                           );
                         }),
-                      )
-
+                      ),
                     ),
                   ),
 
@@ -627,11 +589,11 @@ class _ReScanScreenState extends State<ReScanScreen> {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Wrap(
-                          spacing: 10,
-                          runSpacing: 10,
+                          spacing: 3,
+                          runSpacing: 3,
                           crossAxisAlignment: WrapCrossAlignment.center,
                           children: [
-                            _chipButton('Clr Line', onTap: () {
+                            _chipButton('Clr', onTap: () {
                               if (selectedLine == null) return;
                               setState(() {
                                 selectedLine!.tempScanned = 0;
@@ -641,7 +603,7 @@ class _ReScanScreenState extends State<ReScanScreen> {
                             ElevatedButton.icon(
                               onPressed: (selectedLine == null) ? null : _addQtyToSelectedLine,
                               icon: const Icon(Icons.add_circle),
-                              label: const Text('ADD'),
+                              label: const Text(''),
                               style: ElevatedButton.styleFrom(
                                 backgroundColor: const Color(0xFF27AE60),
                                 foregroundColor: Colors.white,
@@ -649,22 +611,10 @@ class _ReScanScreenState extends State<ReScanScreen> {
                                 shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
                               ),
                             ),
-                            const Text('Qty:', style: TextStyle(fontWeight: FontWeight.w600)),
                             _qtyBox(isTablet: isTablet),
-
-
-
-                            // OutlinedButton.icon(
-                            //   onPressed: (selectedLine == null)
-                            //       ? null
-                            //       : () => _openLineDetailsSheet(selectedLine!),
-                            //   icon: const Icon(Icons.info_outline),
-                            //   label: const Text('Details'),
-                            // ),
-
                             OutlinedButton(
                               onPressed: _resetPendingQty,
-                              child: const Text('Reset'),
+                              child: const Text('Rest'),
                             ),
                           ],
                         ),
@@ -792,14 +742,14 @@ class _ReScanScreenState extends State<ReScanScreen> {
                 fontSize: isTablet ? 18 : 16,
               ),
               decoration: const InputDecoration(
-                hintText: 'Enter qty',
+                hintText: 'qty',
                 isDense: true,
                 border: InputBorder.none,
                 contentPadding: EdgeInsets.symmetric(vertical: 8),
               ),
             ),
           ),
-          const SizedBox(width: 6),
+          const SizedBox(width: 3),
           ElevatedButton(
             onPressed: _savePendingQty,
             style: ElevatedButton.styleFrom(
@@ -841,7 +791,6 @@ class _SoLine {
   }) : barcodes = barcodes ?? [];
 
   factory _SoLine.fromJson(Map<String, dynamic> json) {
-    // ✅ بدون تعديل (2): ما زلنا نقرأ firstScan / secondScan
     final first = (json['firstScan'] as num?)?.toInt() ??
         (json['firstscan'] as num?)?.toInt() ?? 0;
     final second = (json['secondScan'] as num?)?.toInt() ??
