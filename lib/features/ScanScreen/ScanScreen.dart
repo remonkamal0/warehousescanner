@@ -655,8 +655,8 @@ class _ScanScreenState extends State<ScanScreen> {
                     children: [
                       // صف الأدوات
                       Wrap(
-                        spacing: 3,
-                        runSpacing: 3,
+                        spacing: 2,
+                        runSpacing: 2,
                         crossAxisAlignment: WrapCrossAlignment.center,
                         children: [
                           _chipButton('Clr', onTap: _clearLine),
@@ -672,7 +672,7 @@ class _ScanScreenState extends State<ScanScreen> {
                               shape: RoundedRectangleBorder(
                                   borderRadius: BorderRadius.circular(8)),
                             ),
-                            child: const Text(''),
+                            child: const Text('+',style: TextStyle(fontWeight: FontWeight.w600),),
                           ),
                           _qtyBox(isTablet: isTablet),
                           OutlinedButton(
