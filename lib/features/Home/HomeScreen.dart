@@ -1,9 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:provider/provider.dart';
 
 import '../Get S.O.s/Get S.O.s.dart';
 import '../Re-Scan S.O.s/Re-Scan S.O.s.dart';
-// import '../SendSOSScreen/SendSOSScreen.dart';
+import '../../providers/auth_provider.dart';
+import '../../core/constants/routes_managers.dart';
 
 class HomeScreen extends StatelessWidget {
   const HomeScreen({super.key});
@@ -13,7 +15,6 @@ class HomeScreen extends StatelessWidget {
     final size = MediaQuery.of(context).size;
     final isTablet = size.width >= 600;
 
-    // قياسات مرنة
     final btnHeight = isTablet ? 64.0 : 56.0;
     final btnRadius = isTablet ? 18.0 : 16.0;
     final fontSize = isTablet ? 22.0 : 18.0;
@@ -22,7 +23,7 @@ class HomeScreen extends StatelessWidget {
     return Scaffold(
       backgroundColor: Colors.white,
       appBar: AppBar(
-        backgroundColor: const Color(0xFF0E4A86), // الأزرق الغامق
+        backgroundColor: const Color(0xFF0E4A86),
         centerTitle: true,
         title: const Text(
           'Home',
@@ -34,7 +35,7 @@ class HomeScreen extends StatelessWidget {
       ),
       body: Center(
         child: Column(
-          mainAxisAlignment: MainAxisAlignment.center, // 👈 يخليهم في نص الشاشة
+          mainAxisAlignment: MainAxisAlignment.center,
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             Padding(
@@ -59,7 +60,6 @@ class HomeScreen extends StatelessWidget {
               ),
             ),
             SizedBox(height: gap),
-
             Padding(
               padding: EdgeInsets.symmetric(
                 horizontal: isTablet ? size.width * 0.18 : 32.0,
@@ -82,13 +82,12 @@ class HomeScreen extends StatelessWidget {
               ),
             ),
             SizedBox(height: gap),
-
             Padding(
               padding: EdgeInsets.symmetric(
                 horizontal: isTablet ? size.width * 0.18 : 32.0,
               ),
               child: _ActionButton(
-                label: 'Exit',
+                label: 'Log out',
                 bg: const Color(0xFFE74C3C),
                 shadow: const Color(0x33E74C3C),
                 height: btnHeight,
@@ -109,18 +108,26 @@ class HomeScreen extends StatelessWidget {
     showDialog(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text("Confirm Exit"),
-        content: const Text("Are you sure you want to exit?"),
+        title: const Text("Confirm Logout"),
+        content: const Text("Are you sure you want to logout?"),
         actions: [
           TextButton(
             onPressed: () {
-              Navigator.of(ctx).pop(); // يقفل الدايالوج
+              Navigator.of(ctx).pop();
             },
             child: const Text("No"),
           ),
           TextButton(
             onPressed: () {
-              SystemNavigator.pop(); // يخرج من الابلكيشن
+              // ✅ اعمل logout
+              Provider.of<AuthProvider>(context, listen: false).clearUser();
+
+              // ✅ روح لشاشة اللوجين وامسح الـ stack
+              Navigator.pushNamedAndRemoveUntil(
+                context,
+                RoutesName.kLogin,
+                    (route) => false,
+              );
             },
             child: const Text("Yes"),
           ),

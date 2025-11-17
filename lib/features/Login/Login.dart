@@ -1,8 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'dart:convert';
-import 'package:flutter/services.dart'; // 👈 مهم علشان inputFormatters
+import 'package:flutter/services.dart';
+import 'package:provider/provider.dart';
+
 import '../../core/constants/color_managers.dart';
+import '../../providers/auth_provider.dart';
 import '../Home/HomeScreen.dart';
 
 class LoginScreen extends StatefulWidget {
@@ -13,9 +16,10 @@ class LoginScreen extends StatefulWidget {
 }
 
 class _LoginScreenState extends State<LoginScreen> {
-  String? selectedUser;
+  String? selectedLoginNumber;
+  String? selectedUserName;
   final TextEditingController passwordController = TextEditingController();
-  List<String> users = [];
+  List<dynamic> users = [];
   bool isLoading = false;
 
   @override
@@ -26,7 +30,11 @@ class _LoginScreenState extends State<LoginScreen> {
 
   /// جلب المستخدمين من الـ API
   Future<void> fetchUsers() async {
-    setState(() => isLoading = true);
+    setState(() {
+      isLoading = true;
+      users = []; // ⬅ امسح اللستة مؤقتًا علشان يظهر اللودينج
+    });
+
     try {
       final response =
       await http.get(Uri.parse("http://irs.evioteg.com:8080/api/user"));
@@ -34,7 +42,7 @@ class _LoginScreenState extends State<LoginScreen> {
       if (response.statusCode == 200) {
         final List<dynamic> data = jsonDecode(response.body);
         setState(() {
-          users = data.map((u) => u["userName"].toString()).toList();
+          users = data;
         });
       } else {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -46,41 +54,52 @@ class _LoginScreenState extends State<LoginScreen> {
         SnackBar(content: Text("Error fetching users: $e")),
       );
     }
+
     setState(() => isLoading = false);
   }
 
-  /// تسجيل الدخول
+  /// تسجيل الدخول - باستخدام multipart/form-data
   Future<void> login() async {
-    if (selectedUser != null && passwordController.text.isNotEmpty) {
+    if (selectedLoginNumber != null && passwordController.text.isNotEmpty) {
+      setState(() => isLoading = true);
+
       try {
-        final response =
-        await http.get(Uri.parse("http://irs.evioteg.com:8080/api/user"));
+        var uri = Uri.parse("http://irs.evioteg.com:8080/api/user/login");
+        var request = http.MultipartRequest("POST", uri);
+
+        request.fields['LoginNumber'] = selectedLoginNumber!;
+        request.fields['LoginPassWord'] = passwordController.text;
+
+        var streamedResponse = await request.send();
+        var response = await http.Response.fromStream(streamedResponse);
 
         if (response.statusCode == 200) {
-          final List<dynamic> users = jsonDecode(response.body);
+          final data = jsonDecode(response.body);
 
-          final user = users.firstWhere(
-                (u) =>
-            u["userName"] == selectedUser &&
-                u["loginPassWord"] == passwordController.text &&
-                u["inactive"] == 0,
-            orElse: () => null,
-          );
+          if (data != null && data["userID"] != null) {
+            final authProvider =
+            Provider.of<AuthProvider>(context, listen: false);
+            authProvider.setUserID(data["userID"]);
 
-          if (user != null) {
-            // ✅ تسجيل دخول ناجح
             Navigator.pushReplacement(
               context,
               MaterialPageRoute(builder: (_) => const HomeScreen()),
             );
           } else {
             ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(content: Text("Invalid username or password")),
+              const SnackBar(content: Text("Login failed: invalid response")),
             );
           }
         } else {
+          String errorMsg;
+          try {
+            final errorData = jsonDecode(response.body);
+            errorMsg = errorData["message"] ?? "Login failed";
+          } catch (_) {
+            errorMsg = "Login failed: ${response.statusCode}";
+          }
           ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text("Login failed: ${response.statusCode}")),
+            SnackBar(content: Text(errorMsg)),
           );
         }
       } catch (e) {
@@ -88,6 +107,8 @@ class _LoginScreenState extends State<LoginScreen> {
           SnackBar(content: Text("Error: $e")),
         );
       }
+
+      setState(() => isLoading = false);
     } else {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text("Please select a user and enter password")),
@@ -112,6 +133,13 @@ class _LoginScreenState extends State<LoginScreen> {
             fontWeight: FontWeight.bold,
           ),
         ),
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.refresh, color: Colors.white),
+            tooltip: "Refresh Users",
+            onPressed: fetchUsers, // ⬅ استدعاء الفانكشن
+          ),
+        ],
       ),
       backgroundColor: Colors.white,
       body: Center(
@@ -126,8 +154,10 @@ class _LoginScreenState extends State<LoginScreen> {
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
               // ===== User Buttons =====
-              ...users.map((user) {
-                bool isSelected = selectedUser == user;
+              ...users.map((u) {
+                String userName = u["userName"].toString();
+                String loginNumber = u["loginNumber"].toString();
+                bool isSelected = selectedLoginNumber == loginNumber;
                 return Padding(
                   padding: const EdgeInsets.symmetric(vertical: 6),
                   child: ElevatedButton(
@@ -137,19 +167,19 @@ class _LoginScreenState extends State<LoginScreen> {
                           : Colors.white,
                       foregroundColor: Colors.blue.shade900,
                       side: const BorderSide(color: Colors.blue),
-                      minimumSize:
-                      Size(double.infinity, isTablet ? 60 : 50),
+                      minimumSize: Size(double.infinity, isTablet ? 60 : 50),
                       shape: RoundedRectangleBorder(
                         borderRadius: BorderRadius.circular(10),
                       ),
                     ),
                     onPressed: () {
                       setState(() {
-                        selectedUser = user;
+                        selectedLoginNumber = loginNumber;
+                        selectedUserName = userName;
                       });
                     },
                     child: Text(
-                      user,
+                      userName,
                       style: TextStyle(
                         fontWeight: FontWeight.bold,
                         fontSize: isTablet ? 20 : 16,
@@ -164,19 +194,16 @@ class _LoginScreenState extends State<LoginScreen> {
 
               const SizedBox(height: 20),
 
-              // ===== Password Field (only if user selected) =====
-              if (selectedUser != null) ...[
+              // ===== Password Field =====
+              if (selectedLoginNumber != null) ...[
                 TextField(
                   controller: passwordController,
                   obscureText: true,
                   obscuringCharacter: '•',
                   keyboardType: const TextInputType.numberWithOptions(
-                    decimal: false,
-                    signed: false,
-                  ),
+                      decimal: false, signed: false),
                   inputFormatters: [
                     FilteringTextInputFormatter.digitsOnly,
-                    // LengthLimitingTextInputFormatter(6), // 👈 لو عايز تحدد الطول (مثلاً 6 أرقام)
                   ],
                   style: TextStyle(fontSize: isTablet ? 20 : 16),
                   decoration: InputDecoration(
@@ -197,8 +224,7 @@ class _LoginScreenState extends State<LoginScreen> {
                   style: ElevatedButton.styleFrom(
                     backgroundColor: Colors.blue.shade900,
                     foregroundColor: Colors.white,
-                    minimumSize:
-                    Size(double.infinity, isTablet ? 60 : 50),
+                    minimumSize: Size(double.infinity, isTablet ? 60 : 50),
                     shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(12),
                     ),
