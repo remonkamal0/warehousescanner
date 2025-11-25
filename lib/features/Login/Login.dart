@@ -37,7 +37,7 @@ class _LoginScreenState extends State<LoginScreen> {
 
     try {
       final response =
-      await http.get(Uri.parse("http://irs.evioteg.com:8080/api/user"));
+      await http.get(Uri.parse("http://10.50.1.214/api/user"));
 
       if (response.statusCode == 200) {
         final List<dynamic> data = jsonDecode(response.body);
@@ -64,7 +64,7 @@ class _LoginScreenState extends State<LoginScreen> {
       setState(() => isLoading = true);
 
       try {
-        var uri = Uri.parse("http://irs.evioteg.com:8080/api/user/login");
+        var uri = Uri.parse("http://10.50.1.214/api/user/login");
         var request = http.MultipartRequest("POST", uri);
 
         request.fields['LoginNumber'] = selectedLoginNumber!;

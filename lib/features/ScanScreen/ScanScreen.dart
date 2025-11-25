@@ -105,7 +105,7 @@ class _ScanScreenState extends State<ScanScreen> {
 
   Future<void> fetchLines() async {
     final url =
-        "http://irs.evioteg.com:8080/api/SalesOrderLine/GetOrderLinesWithBarcodesFSC/${widget.txnID}";
+        "http://10.50.1.214/api/SalesOrderLine/GetOrderLinesWithBarcodesFSC/${widget.txnID}";
     try {
       final response = await http.get(Uri.parse(url));
       if (response.statusCode == 200) {
@@ -209,7 +209,7 @@ class _ScanScreenState extends State<ScanScreen> {
     }
 
     final url =
-        "http://irs.evioteg.com:8080/api/SalesOrderLine/UpdateOrderDetailsFSC/${widget.txnID}/$userID";
+        "http://10.50.1.214/api/SalesOrderLine/UpdateOrderDetailsFSC/${widget.txnID}/$userID";
 
     try {
       final payload = lines
