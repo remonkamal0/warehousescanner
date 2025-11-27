@@ -41,6 +41,13 @@ class _ScanScreenState extends State<ScanScreen> {
   /// Pending quantity (تتضاف عند الاسكان أو زر ADD)
   int _pendingQty = 0;
 
+  /// مفاتيح الصفوف + كنترولر الاسكرول
+  List<GlobalKey> _rowKeys = [];
+  final ScrollController _tableScrollController = ScrollController();
+
+  /// اتجاه الـ Sort: true = A→Z, false = Z→A
+  bool _sortAscending = true;
+
   @override
   void initState() {
     super.initState();
@@ -64,6 +71,7 @@ class _ScanScreenState extends State<ScanScreen> {
     barcodeCtrl.dispose();
     _barcodeFocus.dispose();
     _qtyFocus.dispose();
+    _tableScrollController.dispose();
     super.dispose();
   }
 
@@ -77,7 +85,7 @@ class _ScanScreenState extends State<ScanScreen> {
     SystemChannels.textInput.invokeMethod('TextInput.hide');
   }
 
-  // استهلاك وتصفير pending qty (بدون أي SnackBar)
+  // استهلاك وتصفير pending qty
   void _consumePendingQty() {
     setState(() => _pendingQty = 0);
     _ensureFocus();
@@ -105,13 +113,14 @@ class _ScanScreenState extends State<ScanScreen> {
 
   Future<void> fetchLines() async {
     final url =
-        "http://irs.evioteg.com:8080/api/SalesOrderLine/GetOrderLinesWithBarcodesFSC/${widget.txnID}";
+        "10.42.1.162:8080/api/SalesOrderLine/GetOrderLinesWithBarcodesFSC/${widget.txnID}";
     try {
       final response = await http.get(Uri.parse(url));
       if (response.statusCode == 200) {
         final data = json.decode(response.body) as List;
         setState(() {
           lines = data.map((e) => _SoLine.fromJson(e)).toList();
+          _rowKeys = List.generate(lines.length, (_) => GlobalKey());
           isLoading = false;
         });
         Future.delayed(const Duration(milliseconds: 200), _ensureFocus);
@@ -120,7 +129,6 @@ class _ScanScreenState extends State<ScanScreen> {
       }
     } catch (e) {
       setState(() => isLoading = false);
-      // تم إزالة أي SnackBar
     }
   }
 
@@ -130,7 +138,7 @@ class _ScanScreenState extends State<ScanScreen> {
     });
   }
 
-  /// حفظ الكمية المعلّقة (OK) — بدون SnackBar
+  /// حفظ الكمية المعلّقة (OK)
   void _savePendingQty() {
     final val = int.tryParse(qtyCtrl.text.trim());
     if (val == null || val <= 0) {
@@ -144,7 +152,7 @@ class _ScanScreenState extends State<ScanScreen> {
     Future.delayed(const Duration(milliseconds: 120), _ensureFocus);
   }
 
-  /// تصفير الكمية المعلّقة — بدون SnackBar
+  /// تصفير الكمية المعلّقة
   void _resetPendingQty() {
     setState(() {
       _pendingQty = 0;
@@ -152,7 +160,7 @@ class _ScanScreenState extends State<ScanScreen> {
     _ensureFocus();
   }
 
-  /// مسح مؤقت السطر الحالي — بدون SnackBar
+  /// مسح مؤقت السطر الحالي
   void _clearLine() {
     if (selectedLine == null) return;
     setState(() {
@@ -161,7 +169,7 @@ class _ScanScreenState extends State<ScanScreen> {
     Future.delayed(const Duration(milliseconds: 70), _ensureFocus);
   }
 
-  /// زر ADD: يضيف للكمية الحالية += — بدون SnackBar
+  /// زر ADD: يضيف للكمية الحالية +=
   void _addQtyToSelectedLine() {
     if (selectedLine == null) {
       return;
@@ -188,13 +196,19 @@ class _ScanScreenState extends State<ScanScreen> {
 
     if (totalIfAdd > line.orderedQty) {
       _showOverDialog(line.orderedQty, current, adding);
-      // لو عايز تمنع الإضافة عند الزيادة: اعمل return;
+      // لو حابب تمنع الزيادة فعلاً: اعمل return هنا
       // return;
     }
 
     setState(() {
       line.tempScanned += adding;
     });
+
+    if (selectedIndex != null) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        _scrollToIndex(selectedIndex!);
+      });
+    }
 
     qtyCtrl.clear();
     _consumePendingQty();
@@ -209,7 +223,7 @@ class _ScanScreenState extends State<ScanScreen> {
     }
 
     final url =
-        "http://irs.evioteg.com:8080/api/SalesOrderLine/UpdateOrderDetailsFSC/${widget.txnID}/$userID";
+        "10.42.1.162:8080/api/SalesOrderLine/UpdateOrderDetailsFSC/${widget.txnID}/$userID";
 
     try {
       final payload = lines
@@ -360,7 +374,7 @@ class _ScanScreenState extends State<ScanScreen> {
     return result ?? false;
   }
 
-  /// Bootstrap: لو الحقل فاضي = 1، أو 1..3 — بدون SnackBar
+  /// Bootstrap: لو الحقل فاضي = 1، أو 1..3
   bool _bootstrapPendingQtyIfSmall() {
     final raw = qtyCtrl.text.trim();
     if (raw.isEmpty) {
@@ -376,7 +390,7 @@ class _ScanScreenState extends State<ScanScreen> {
     return false;
   }
 
-  /// Scan: يضيف الكمية المعلّقة للسطر المطابق — بدون SnackBar
+  /// Scan: يضيف الكمية المعلّقة للسطر المطابق
   void _applyScannedBarcode(String barcode) {
     if (_pendingQty <= 0) {
       final captured = _bootstrapPendingQtyIfSmall();
@@ -400,6 +414,10 @@ class _ScanScreenState extends State<ScanScreen> {
       setState(() {
         selectedIndex = index;
         line.tempScanned += adding;
+      });
+
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        _scrollToIndex(index);
       });
 
       _consumePendingQty();
@@ -479,7 +497,35 @@ class _ScanScreenState extends State<ScanScreen> {
     );
   }
 
-  // ===== Widgets =====
+  /// Sort A→Z أو Z→A حسب الكود
+  void _toggleSort() {
+    setState(() {
+      _sortAscending = !_sortAscending;
+
+      if (_sortAscending) {
+        lines.sort((a, b) => a.code.compareTo(b.code)); // A → Z
+      } else {
+        lines.sort((a, b) => b.code.compareTo(a.code)); // Z → A
+      }
+
+      _rowKeys = List.generate(lines.length, (_) => GlobalKey());
+      selectedIndex = null;
+    });
+  }
+
+  /// Scroll لصف معيّن في الجدول
+  void _scrollToIndex(int index) {
+    if (index < 0 || index >= _rowKeys.length) return;
+
+    final ctx = _rowKeys[index].currentContext;
+    if (ctx != null) {
+      Scrollable.ensureVisible(
+        ctx,
+        duration: const Duration(milliseconds: 250),
+        curve: Curves.easeInOut,
+      );
+    }
+  }
 
   Widget _chipButton(String label, {required VoidCallback onTap}) {
     return ElevatedButton(
@@ -573,6 +619,16 @@ class _ScanScreenState extends State<ScanScreen> {
             'Scan - ${widget.soNumber}',
             style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w800),
           ),
+          actions: [
+            IconButton(
+              onPressed: _toggleSort,
+              icon: Icon(
+                _sortAscending ? Icons.arrow_downward : Icons.arrow_upward,
+                color: Colors.white,
+              ),
+              tooltip: _sortAscending ? 'Sort A → Z' : 'Sort Z → A',
+            ),
+          ],
         ),
         body: Stack(
           children: [
@@ -595,6 +651,7 @@ class _ScanScreenState extends State<ScanScreen> {
                 ),
                 Expanded(
                   child: SingleChildScrollView(
+                    controller: _tableScrollController,
                     scrollDirection: Axis.vertical,
                     child: DataTable(
                       headingRowColor: MaterialStateProperty.all(
@@ -602,32 +659,46 @@ class _ScanScreenState extends State<ScanScreen> {
                       columns: const [
                         DataColumn(
                             label: Text('SKU',
-                                style: TextStyle(
-                                    fontWeight: FontWeight.w700))),
+                                style:
+                                TextStyle(fontWeight: FontWeight.w700))),
                         DataColumn(
                             label: Text('SOQ',
-                                style: TextStyle(
-                                    fontWeight: FontWeight.w700))),
+                                style:
+                                TextStyle(fontWeight: FontWeight.w700))),
                         DataColumn(
                             label: Text('Scanned',
-                                style: TextStyle(
-                                    fontWeight: FontWeight.w700))),
+                                style:
+                                TextStyle(fontWeight: FontWeight.w700))),
                         DataColumn(
                             label: Text('U/M',
-                                style: TextStyle(
-                                    fontWeight: FontWeight.w700))),
+                                style:
+                                TextStyle(fontWeight: FontWeight.w700))),
                       ],
                       rows: List.generate(lines.length, (i) {
                         final line = lines[i];
                         final selected = i == selectedIndex;
+                        final rowKey =
+                        (i < _rowKeys.length) ? _rowKeys[i] : GlobalKey();
+
                         return DataRow(
                           selected: selected,
                           color: MaterialStateProperty.resolveWith<Color?>(
                                   (states) =>
                               selected ? const Color(0xFFE0ECFF) : null),
-                          onSelectChanged: (_) => _selectRow(i),
+                          onSelectChanged: (_) {
+                            _selectRow(i);
+                            WidgetsBinding.instance
+                                .addPostFrameCallback((_) {
+                              _scrollToIndex(i);
+                            });
+                          },
                           cells: [
-                            DataCell(Text(line.code)),
+                            DataCell(
+                              Container(
+                                key: rowKey,
+                                child: Text(line.code),
+                              ),
+                            ),
                             DataCell(Text('${line.orderedQty}')),
                             DataCell(
                                 Text('${line.scanned + line.tempScanned}')),
@@ -639,7 +710,7 @@ class _ScanScreenState extends State<ScanScreen> {
                   ),
                 ),
 
-                // ===== Footer: أدوات + سطر الوصف + أزرار =====
+                // ===== Footer =====
                 Container(
                   width: double.infinity,
                   padding: EdgeInsets.symmetric(
@@ -647,13 +718,14 @@ class _ScanScreenState extends State<ScanScreen> {
                     vertical: 14,
                   ),
                   decoration: const BoxDecoration(
-                      color: Colors.white,
-                      border:
-                      Border(top: BorderSide(color: Color(0xFFE6E6E6)))),
+                    color: Colors.white,
+                    border: Border(
+                      top: BorderSide(color: Color(0xFFE6E6E6)),
+                    ),
+                  ),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      // صف الأدوات
                       Wrap(
                         spacing: 2,
                         runSpacing: 2,
@@ -672,7 +744,11 @@ class _ScanScreenState extends State<ScanScreen> {
                               shape: RoundedRectangleBorder(
                                   borderRadius: BorderRadius.circular(8)),
                             ),
-                            child: const Text('+',style: TextStyle(fontWeight: FontWeight.w600),),
+                            child: const Text(
+                              '+',
+                              style:
+                              TextStyle(fontWeight: FontWeight.w600),
+                            ),
                           ),
                           _qtyBox(isTablet: isTablet),
                           OutlinedButton(
@@ -681,8 +757,6 @@ class _ScanScreenState extends State<ScanScreen> {
                           ),
                         ],
                       ),
-
-                      // سطر الوصف (سطر واحد فقط)
                       const SizedBox(height: 10),
                       if (selectedLine != null)
                         Text(
@@ -696,7 +770,6 @@ class _ScanScreenState extends State<ScanScreen> {
                             fontWeight: FontWeight.w600,
                           ),
                         ),
-
                       const SizedBox(height: 12),
                       Row(
                         children: [
@@ -718,7 +791,8 @@ class _ScanScreenState extends State<ScanScreen> {
                             child: ElevatedButton(
                               onPressed: _confirmDone,
                               style: ElevatedButton.styleFrom(
-                                backgroundColor: const Color(0xFF2F76D2),
+                                backgroundColor:
+                                const Color(0xFF2F76D2),
                                 padding: const EdgeInsets.symmetric(
                                     vertical: 14),
                                 shape: RoundedRectangleBorder(
@@ -741,7 +815,6 @@ class _ScanScreenState extends State<ScanScreen> {
                 ),
               ],
             ),
-            // Hidden TextField for barcode input
             Positioned(
               left: -100,
               top: -100,
@@ -813,8 +886,10 @@ class _SoLine {
       unit: json['unit']?.toString() ?? 'PCS',
       scanned: first,
       tempScanned: second,
-      barcodes:
-      (json['barcodes'] as List?)?.map((e) => e.toString()).toList() ?? [],
+      barcodes: (json['barcodes'] as List?)
+          ?.map((e) => e.toString())
+          .toList() ??
+          [],
     );
   }
 }
