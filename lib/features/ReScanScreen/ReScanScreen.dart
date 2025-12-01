@@ -78,7 +78,7 @@ class _ReScanScreenState extends State<ReScanScreen> {
 
   Future<void> fetchLines() async {
     final url =
-        "10.42.1.162:8080/api/SalesOrderLine/GetOrderLinesWithBarcodesSSC/${widget.txnID}";
+        "http://10.50.1.214/api/SalesOrderLine/GetOrderLinesWithBarcodesSSC/${widget.txnID}";
     try {
       final response = await http.get(Uri.parse(url));
       if (response.statusCode == 200) {
@@ -222,7 +222,7 @@ class _ReScanScreenState extends State<ReScanScreen> {
         : widget.txnID;
 
     final url =
-        "10.42.1.162:8080/api/SalesOrderLine/UpdateOrderDetailsSSC/"
+        "http://10.50.1.214/api/SalesOrderLine/UpdateOrderDetailsSSC/"
         "${Uri.encodeComponent(salesOrderId)}/"
         "${Uri.encodeComponent(userId.toString())}";
 

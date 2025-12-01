@@ -32,7 +32,7 @@ class _ReScanSOSScreenState extends State<ReScanSOSScreen> {
     }
 
     final url =
-        "http://irs.evioteg.com:8080/api/SalesOrder/GetSalesOrderSSC/$userID";
+        "http://10.50.1.214/api/SalesOrder/GetSalesOrderSSC/$userID";
 
     try {
       final response = await http.get(Uri.parse(url));
