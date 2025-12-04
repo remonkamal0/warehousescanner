@@ -43,6 +43,9 @@ class _ReScanScreenState extends State<ReScanScreen> {
   /// اتجاه الترتيب: true = A→Z, false = Z→A
   bool _sortAscending = true;
 
+  /// إظهار / إخفاء الأصناف اللي خلصت أو Over (Scanned >= OrderedQty)
+  bool _showCompleted = false;
+
   @override
   void initState() {
     super.initState();
@@ -115,7 +118,6 @@ class _ReScanScreenState extends State<ReScanScreen> {
       selectedIndex = index;
     });
 
-    // بعد الـ build ننزل لحد الصف
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _scrollToIndex(index);
     });
@@ -182,16 +184,24 @@ class _ReScanScreenState extends State<ReScanScreen> {
 
     if (totalIfAdd > line.orderedQty) {
       _showOverDialog(
-          ordered: line.orderedQty, current: current, adding: adding);
-      // لو عايز تمنع الزيادة فعلاً: اعمل return هنا
-      // return;
+        ordered: line.orderedQty,
+        current: current,
+        adding: adding,
+      );
+      // الزيادة مسموح بيها، مش بنمنعها
     }
 
     setState(() {
       line.tempScanned += adding;
+      final total = line.scanned + line.tempScanned;
+
+      // لو وصل أو عدّى الكمية المطلوبة → الرو يختفي لو _showCompleted = false
+      if (total >= line.orderedQty && !_showCompleted) {
+        selectedIndex = null;
+      }
     });
 
-    // Scroll للصف المختار
+    // Scroll للصف المختار لو لسه موجود
     if (selectedIndex != null) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         _scrollToIndex(selectedIndex!);
@@ -250,7 +260,9 @@ class _ReScanScreenState extends State<ReScanScreen> {
         );
       }
     } catch (e) {
-      if (mounted) {}
+      if (mounted) {
+        // ممكن تضيف SnackBar لو حابب
+      }
     } finally {
       _ensureBarcodeFocus();
     }
@@ -435,18 +447,30 @@ class _ReScanScreenState extends State<ReScanScreen> {
 
       if (totalIfAdd > line.orderedQty) {
         _showOverDialog(
-            ordered: line.orderedQty, current: current, adding: adding);
+          ordered: line.orderedQty,
+          current: current,
+          adding: adding,
+        );
       }
 
       setState(() {
-        selectedIndex = index;
         line.tempScanned += adding;
+        final total = line.scanned + line.tempScanned;
+
+        // لو total >= orderedQty → يختفي لو _showCompleted = false
+        if (total >= line.orderedQty && !_showCompleted) {
+          selectedIndex = null;
+        } else {
+          selectedIndex = index;
+        }
       });
 
-      // Scroll لحد الصف اللي اترفعت كميته
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        _scrollToIndex(index);
-      });
+      // Scroll لحد الصف لو لسه ظاهر
+      if (selectedIndex != null) {
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          _scrollToIndex(selectedIndex!);
+        });
+      }
 
       _consumePendingQty();
     } else {
@@ -470,6 +494,20 @@ class _ReScanScreenState extends State<ReScanScreen> {
       // بعد الترتيب نعيد بناء مفاتيح الصفوف
       _rowKeys = List.generate(lines.length, (_) => GlobalKey());
       selectedIndex = null;
+    });
+  }
+
+  /// Toggle إظهار / إخفاء الأصناف اللي خلصت أو Over
+  void _toggleShowCompleted() {
+    setState(() {
+      _showCompleted = !_showCompleted;
+
+      if (!_showCompleted && selectedLine != null) {
+        final total = selectedLine!.scanned + selectedLine!.tempScanned;
+        if (total >= selectedLine!.orderedQty) {
+          selectedIndex = null;
+        }
+      }
     });
   }
 
@@ -539,8 +577,9 @@ class _ReScanScreenState extends State<ReScanScreen> {
                   _pill("Ordered", "${line.orderedQty}"),
                   _pill("Scanned", "$current"),
                   _pill(
-                      "Remaining",
-                      "${remaining < 0 ? 0 : remaining}"),
+                    "Remaining",
+                    "${remaining < 0 ? 0 : remaining}",
+                  ),
                 ],
               ),
               const SizedBox(height: 10),
@@ -583,6 +622,60 @@ class _ReScanScreenState extends State<ReScanScreen> {
     final size = MediaQuery.of(context).size;
     final isTablet = size.width >= 600;
 
+    // نبني DataRows حسب حالة كل لاين
+    final List<DataRow> dataRows = [];
+    for (int i = 0; i < lines.length; i++) {
+      final line = lines[i];
+      final total = line.scanned + line.tempScanned;
+
+      final bool isCompleted = total == line.orderedQty;
+      final bool isOver = total > line.orderedQty;
+
+      // لو total >= orderedQty → نخفي الرو من الجدول لو مش مفعّل عرض الـ completed
+      if (!_showCompleted && (isCompleted || isOver)) {
+        continue;
+      }
+
+      final selected = i == selectedIndex;
+      final rowKey = (i < _rowKeys.length) ? _rowKeys[i] : GlobalKey();
+
+      dataRows.add(
+        DataRow(
+          selected: selected,
+          color: MaterialStateProperty.resolveWith<Color?>(
+                (states) {
+              if (selected) return const Color(0xFFE0ECFF); // أزرق فاتح للمحدد
+              if (isOver) return const Color(0xFFFFE5E5);   // أحمر فاتح لو Over
+              if (isCompleted) return const Color(0xFFE5FFE5); // أخضر فاتح لو Completed
+              return null;
+            },
+          ),
+          onSelectChanged: (_) => _selectRow(i),
+          cells: [
+            DataCell(
+              Container(
+                key: rowKey,
+                child: Text(line.code),
+              ),
+              onTap: () => _selectRow(i),
+            ),
+            DataCell(
+              Text('${line.orderedQty}'),
+              onTap: () => _selectRow(i),
+            ),
+            DataCell(
+              Text('$total'),
+              onTap: () => _selectRow(i),
+            ),
+            DataCell(
+              Text(line.unit),
+              onTap: () => _selectRow(i),
+            ),
+          ],
+        ),
+      );
+    }
+
     return GestureDetector(
       behavior: HitTestBehavior.translucent,
       onTap: _ensureBarcodeFocus,
@@ -617,6 +710,18 @@ class _ReScanScreenState extends State<ReScanScreen> {
                 ),
                 tooltip: _sortAscending ? 'Sort A → Z' : 'Sort Z → A',
               ),
+              IconButton(
+                onPressed: _toggleShowCompleted,
+                icon: Icon(
+                  _showCompleted
+                      ? Icons.check_circle
+                      : Icons.check_circle_outline,
+                  color: Colors.white,
+                ),
+                tooltip: _showCompleted
+                    ? 'Hide completed & over'
+                    : 'Show completed & over',
+              ),
             ],
           ),
           body: Stack(
@@ -642,8 +747,7 @@ class _ReScanScreenState extends State<ReScanScreen> {
                       scrollDirection: Axis.vertical,
                       child: DataTable(
                         showCheckboxColumn: true,
-                        headingRowColor:
-                        MaterialStateProperty.all(
+                        headingRowColor: MaterialStateProperty.all(
                             const Color(0xFFEFEFF4)),
                         columns: const [
                           DataColumn(
@@ -663,47 +767,7 @@ class _ReScanScreenState extends State<ReScanScreen> {
                                   style: TextStyle(
                                       fontWeight: FontWeight.w700))),
                         ],
-                        rows: List.generate(lines.length, (i) {
-                          final line = lines[i];
-                          final selected = i == selectedIndex;
-                          final rowKey =
-                          (i < _rowKeys.length)
-                              ? _rowKeys[i]
-                              : GlobalKey();
-
-                          return DataRow(
-                            selected: selected,
-                            color: MaterialStateProperty
-                                .resolveWith<Color?>(
-                                  (states) => selected
-                                  ? const Color(0xFFE0ECFF)
-                                  : null,
-                            ),
-                            onSelectChanged: (_) => _selectRow(i),
-                            cells: [
-                              DataCell(
-                                Container(
-                                  key: rowKey,
-                                  child: Text(line.code),
-                                ),
-                                onTap: () => _selectRow(i),
-                              ),
-                              DataCell(
-                                Text('${line.orderedQty}'),
-                                onTap: () => _selectRow(i),
-                              ),
-                              DataCell(
-                                Text(
-                                    '${line.scanned + line.tempScanned}'),
-                                onTap: () => _selectRow(i),
-                              ),
-                              DataCell(
-                                Text(line.unit),
-                                onTap: () => _selectRow(i),
-                              ),
-                            ],
-                          );
-                        }),
+                        rows: dataRows,
                       ),
                     ),
                   ),
@@ -757,9 +821,11 @@ class _ReScanScreenState extends State<ReScanScreen> {
                                     .symmetric(
                                     horizontal: 14,
                                     vertical: 10),
-                                shape: RoundedRectangleBorder(
+                                shape:
+                                RoundedRectangleBorder(
                                     borderRadius:
-                                    BorderRadius.circular(
+                                    BorderRadius
+                                        .circular(
                                         8)),
                               ),
                             ),
@@ -799,12 +865,14 @@ class _ReScanScreenState extends State<ReScanScreen> {
                                   }
                                 },
                                 style: OutlinedButton.styleFrom(
-                                  padding: const EdgeInsets
+                                  padding:
+                                  const EdgeInsets
                                       .symmetric(
                                       vertical: 14),
                                   shape: RoundedRectangleBorder(
                                       borderRadius:
-                                      BorderRadius.circular(
+                                      BorderRadius
+                                          .circular(
                                           10)),
                                 ),
                                 child: const Text('Cancel'),
@@ -819,12 +887,15 @@ class _ReScanScreenState extends State<ReScanScreen> {
                                   backgroundColor:
                                   const Color(
                                       0xFF27AE60),
-                                  padding: const EdgeInsets
+                                  padding:
+                                  const EdgeInsets
                                       .symmetric(
                                       vertical: 14),
-                                  shape: RoundedRectangleBorder(
+                                  shape:
+                                  RoundedRectangleBorder(
                                       borderRadius:
-                                      BorderRadius.circular(
+                                      BorderRadius
+                                          .circular(
                                           10)),
                                 ),
                                 child: const Text(

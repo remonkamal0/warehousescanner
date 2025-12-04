@@ -48,6 +48,9 @@ class _ScanScreenState extends State<ScanScreen> {
   /// اتجاه الـ Sort: true = A→Z, false = Z→A
   bool _sortAscending = true;
 
+  /// إظهار / إخفاء الأصناف اللي خلصت أو Over (total >= orderedQty)
+  bool _showCompleted = false;
+
   @override
   void initState() {
     super.initState();
@@ -196,12 +199,17 @@ class _ScanScreenState extends State<ScanScreen> {
 
     if (totalIfAdd > line.orderedQty) {
       _showOverDialog(line.orderedQty, current, adding);
-      // لو حابب تمنع الزيادة فعلاً: اعمل return هنا
-      // return;
+      // في سيناريوك: الزيادة مسموح بيها، فمش بنعمل return
     }
 
     setState(() {
       line.tempScanned += adding;
+      final total = line.scanned + line.tempScanned;
+
+      // لو الكمية بقت >= orderedQty والرو هيتخفي فى حالة _showCompleted = false
+      if (total >= line.orderedQty && !_showCompleted) {
+        selectedIndex = null;
+      }
     });
 
     if (selectedIndex != null) {
@@ -249,7 +257,7 @@ class _ScanScreenState extends State<ScanScreen> {
       }
     } catch (e) {
       if (mounted) {
-        // بدون SnackBar
+        // ممكن تضيف SnackBar هنا لو حابب
       }
     }
   }
@@ -412,8 +420,15 @@ class _ScanScreenState extends State<ScanScreen> {
       }
 
       setState(() {
-        selectedIndex = index;
         line.tempScanned += adding;
+        final total = line.scanned + line.tempScanned;
+
+        // لو total >= orderedQty → يختفي لو _showCompleted = false
+        if (total >= line.orderedQty && !_showCompleted) {
+          selectedIndex = null;
+        } else {
+          selectedIndex = index;
+        }
       });
 
       WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -424,6 +439,8 @@ class _ScanScreenState extends State<ScanScreen> {
     } else {
       _showInvalidBarcodeDialog(barcode);
     }
+
+    _ensureFocus();
   }
 
   Future<void> _showOverDialog(int ordered, int current, int adding) {
@@ -510,6 +527,20 @@ class _ScanScreenState extends State<ScanScreen> {
 
       _rowKeys = List.generate(lines.length, (_) => GlobalKey());
       selectedIndex = null;
+    });
+  }
+
+  /// Toggle إظهار / إخفاء الأصناف اللي خلصت أو Over
+  void _toggleShowCompleted() {
+    setState(() {
+      _showCompleted = !_showCompleted;
+
+      if (!_showCompleted && selectedLine != null) {
+        final total = selectedLine!.scanned + selectedLine!.tempScanned;
+        if (total >= selectedLine!.orderedQty) {
+          selectedIndex = null;
+        }
+      }
     });
   }
 
@@ -601,6 +632,54 @@ class _ScanScreenState extends State<ScanScreen> {
     final size = MediaQuery.of(context).size;
     final isTablet = size.width >= 600;
 
+    // ✅ نبني الـ rows هنا بناءً على الحالة (خلص/Over/لسه)
+    final dataRows = <DataRow>[];
+    for (int i = 0; i < lines.length; i++) {
+      final line = lines[i];
+      final total = line.scanned + line.tempScanned;
+
+      final isCompleted = total == line.orderedQty;
+      final isOver = total > line.orderedQty;
+      final selected = i == selectedIndex;
+      final rowKey = (i < _rowKeys.length) ? _rowKeys[i] : GlobalKey();
+
+      // لو مش عايز تظهر اللي خلصت → اخفيها
+      if (!_showCompleted && (isCompleted || isOver)) {
+        continue;
+      }
+
+      dataRows.add(
+        DataRow(
+          selected: selected,
+          color: MaterialStateProperty.resolveWith<Color?>(
+                (states) {
+              if (selected) return const Color(0xFFE0ECFF); // أزرق فاتح للمحدد
+              if (isOver) return const Color(0xFFFFE5E5);   // أحمر فاتح لو Over
+              if (isCompleted) return const Color(0xFFE5FFE5); // أخضر فاتح لو Completed
+              return null;
+            },
+          ),
+          onSelectChanged: (_) {
+            _selectRow(i);
+            WidgetsBinding.instance.addPostFrameCallback((_) {
+              _scrollToIndex(i);
+            });
+          },
+          cells: [
+            DataCell(
+              Container(
+                key: rowKey,
+                child: Text(line.code),
+              ),
+            ),
+            DataCell(Text('${line.orderedQty}')),
+            DataCell(Text('$total')),
+            DataCell(Text(line.unit)),
+          ],
+        ),
+      );
+    }
+
     return WillPopScope(
       onWillPop: _showExitConfirmDialog,
       child: Scaffold(
@@ -617,7 +696,8 @@ class _ScanScreenState extends State<ScanScreen> {
           ),
           title: Text(
             'Scan - ${widget.soNumber}',
-            style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w800),
+            style: const TextStyle(
+                color: Colors.white, fontWeight: FontWeight.w800),
           ),
           actions: [
             IconButton(
@@ -627,6 +707,18 @@ class _ScanScreenState extends State<ScanScreen> {
                 color: Colors.white,
               ),
               tooltip: _sortAscending ? 'Sort A → Z' : 'Sort Z → A',
+            ),
+            IconButton(
+              onPressed: _toggleShowCompleted,
+              icon: Icon(
+                _showCompleted
+                    ? Icons.check_circle
+                    : Icons.check_circle_outline,
+                color: Colors.white,
+              ),
+              tooltip: _showCompleted
+                  ? 'Hide completed & over'
+                  : 'Show completed & over',
             ),
           ],
         ),
@@ -640,8 +732,8 @@ class _ScanScreenState extends State<ScanScreen> {
                 Container(
                   width: double.infinity,
                   color: const Color(0xFFEFF6FF),
-                  padding:
-                  const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                  padding: const EdgeInsets.symmetric(
+                      horizontal: 16, vertical: 8),
                   child: Text(
                     "Pending Qty (for scan): $_pendingQty",
                     style: const TextStyle(
@@ -659,53 +751,22 @@ class _ScanScreenState extends State<ScanScreen> {
                       columns: const [
                         DataColumn(
                             label: Text('SKU',
-                                style:
-                                TextStyle(fontWeight: FontWeight.w700))),
+                                style: TextStyle(
+                                    fontWeight: FontWeight.w700))),
                         DataColumn(
                             label: Text('SOQ',
-                                style:
-                                TextStyle(fontWeight: FontWeight.w700))),
+                                style: TextStyle(
+                                    fontWeight: FontWeight.w700))),
                         DataColumn(
                             label: Text('Scanned',
-                                style:
-                                TextStyle(fontWeight: FontWeight.w700))),
+                                style: TextStyle(
+                                    fontWeight: FontWeight.w700))),
                         DataColumn(
                             label: Text('U/M',
-                                style:
-                                TextStyle(fontWeight: FontWeight.w700))),
+                                style: TextStyle(
+                                    fontWeight: FontWeight.w700))),
                       ],
-                      rows: List.generate(lines.length, (i) {
-                        final line = lines[i];
-                        final selected = i == selectedIndex;
-                        final rowKey =
-                        (i < _rowKeys.length) ? _rowKeys[i] : GlobalKey();
-
-                        return DataRow(
-                          selected: selected,
-                          color: MaterialStateProperty.resolveWith<Color?>(
-                                  (states) =>
-                              selected ? const Color(0xFFE0ECFF) : null),
-                          onSelectChanged: (_) {
-                            _selectRow(i);
-                            WidgetsBinding.instance
-                                .addPostFrameCallback((_) {
-                              _scrollToIndex(i);
-                            });
-                          },
-                          cells: [
-                            DataCell(
-                              Container(
-                                key: rowKey,
-                                child: Text(line.code),
-                              ),
-                            ),
-                            DataCell(Text('${line.orderedQty}')),
-                            DataCell(
-                                Text('${line.scanned + line.tempScanned}')),
-                            DataCell(Text(line.unit)),
-                          ],
-                        );
-                      }),
+                      rows: dataRows,
                     ),
                   ),
                 ),
@@ -742,7 +803,8 @@ class _ScanScreenState extends State<ScanScreen> {
                               padding: const EdgeInsets.symmetric(
                                   horizontal: 14, vertical: 10),
                               shape: RoundedRectangleBorder(
-                                  borderRadius: BorderRadius.circular(8)),
+                                  borderRadius:
+                                  BorderRadius.circular(8)),
                             ),
                             child: const Text(
                               '+',
@@ -815,6 +877,7 @@ class _ScanScreenState extends State<ScanScreen> {
                 ),
               ],
             ),
+            // حقل الباركود المخفي
             Positioned(
               left: -100,
               top: -100,
