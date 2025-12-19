@@ -5,7 +5,7 @@ import 'package:http/http.dart' as http;
 import 'package:provider/provider.dart';
 
 import '../../providers/auth_provider.dart';
-import '../../providers/base_url_provider.dart'; // ✅ استخدمنا الباز يوارال هنا
+import '../../providers/base_url_provider.dart';
 
 class ScanScreen extends StatefulWidget {
   final String soNumber;
@@ -29,28 +29,19 @@ class _ScanScreenState extends State<ScanScreen> {
   _SoLine? get selectedLine =>
       (selectedIndex != null) ? lines[selectedIndex!] : null;
 
-  // Manual qty
   final TextEditingController qtyCtrl = TextEditingController(text: '');
-  // Hidden barcode input
   final TextEditingController barcodeCtrl = TextEditingController();
 
-  // Focus
   final FocusNode _barcodeFocus = FocusNode();
   final FocusNode _qtyFocus = FocusNode();
 
   bool _processingBarcode = false;
-
-  /// Pending quantity (تتضاف عند الاسكان أو زر ADD)
   int _pendingQty = 0;
 
-  /// مفاتيح الصفوف + كنترولر الاسكرول
   List<GlobalKey> _rowKeys = [];
   final ScrollController _tableScrollController = ScrollController();
 
-  /// اتجاه الـ Sort: true = A→Z, false = Z→A
   bool _sortAscending = true;
-
-  /// إظهار / إخفاء الأصناف اللي خلصت أو Over (total >= orderedQty)
   bool _showCompleted = false;
 
   @override
@@ -58,10 +49,8 @@ class _ScanScreenState extends State<ScanScreen> {
     super.initState();
     fetchLines();
 
-    // ركّز على حقل الباركود بعد الفتح
     Future.delayed(const Duration(milliseconds: 300), _ensureFocus);
 
-    // دعم الماسحات اللي مش بتبعت Enter
     barcodeCtrl.addListener(() {
       final text = barcodeCtrl.text.trim();
       if (text.isNotEmpty) {
@@ -87,7 +76,6 @@ class _ScanScreenState extends State<ScanScreen> {
     );
   }
 
-  // تركيز على الباركود + إخفاء الكيبورد
   void _ensureFocus() {
     if (!mounted) return;
     try {
@@ -97,13 +85,11 @@ class _ScanScreenState extends State<ScanScreen> {
     SystemChannels.textInput.invokeMethod('TextInput.hide');
   }
 
-  // استهلاك وتصفير pending qty
   void _consumePendingQty() {
     setState(() => _pendingQty = 0);
     _ensureFocus();
   }
 
-  // تطبيع ومنع الـ double-processing
   void _processBarcode(String raw) {
     if (_processingBarcode) return;
     final barcode = raw.replaceAll('\n', '').replaceAll('\r', '').trim();
@@ -123,40 +109,65 @@ class _ScanScreenState extends State<ScanScreen> {
     }
   }
 
-  /// ✅ جلب اللاينات باستخدام الـ Base URL
+  /// ✅✅✅ أهم تعديل هنا: GetOrderLinesWithBarcodesFSC/{ForderId}/{userid}
   Future<void> fetchLines() async {
-    try {
-      final baseUrlProvider =
-      Provider.of<BaseUrlProvider>(context, listen: false);
-      String? baseUrl = baseUrlProvider.baseUrl;
+    setState(() => isLoading = true);
 
-      if (baseUrl == null || baseUrl.trim().isEmpty) {
+    try {
+      final auth = context.read<AuthProvider>();
+      final userId = auth.userID;
+
+      if (userId == null) {
+        setState(() => isLoading = false);
+        _showSnackBar("User ID not found, please login again.");
+        return;
+      }
+
+      final baseUrlProvider = context.read<BaseUrlProvider>();
+
+      // لو انت عامل normalized/apiUrl (زي الكود اللي اتأكدنا عليه)
+      if (baseUrlProvider.normalizedBaseUrl.trim().isEmpty) {
         setState(() => isLoading = false);
         _showSnackBar("Base URL is not set. Please go to Settings.");
         return;
       }
 
-      baseUrl = baseUrl.trim();
-      baseUrl = baseUrl.replaceAll(RegExp(r'/+$'), '');
-
-      final url =
-          "$baseUrl/api/SalesOrderLine/GetOrderLinesWithBarcodesFSC/${widget.txnID}";
+      final url = baseUrlProvider.apiUrl(
+        "api/SalesOrderLine/GetOrderLinesWithBarcodesFSC/${Uri.encodeComponent(widget.txnID)}/${Uri.encodeComponent(userId.toString())}",
+      );
 
       debugPrint("➡️ ScanScreen fetchLines URL = $url");
 
-      final response = await http.get(Uri.parse(url));
+      final response = await http.get(
+        Uri.parse(url),
+        headers: {"Accept": "application/json"},
+      );
+
       if (response.statusCode == 200) {
-        final data = json.decode(response.body) as List;
+        final decoded = json.decode(response.body);
+
+        // أمان: لو السيرفر رجّع object بدل list
+        final List data = (decoded is List) ? decoded : [];
+
         setState(() {
           lines = data.map((e) => _SoLine.fromJson(e)).toList();
           _rowKeys = List.generate(lines.length, (_) => GlobalKey());
           isLoading = false;
         });
+
+        // لو انت مخفي الـ completed والـ over، ممكن يبان فاضي لو كله خلص
+        if (lines.isNotEmpty && !_showCompleted) {
+          final visible = lines.where((l) => (l.scanned + l.tempScanned) < l.orderedQty).length;
+          debugPrint("ℹ️ Visible(not completed) rows: $visible / total: ${lines.length}");
+        }
+
         Future.delayed(const Duration(milliseconds: 200), _ensureFocus);
       } else {
-        debugPrint(
-            "❌ ScanScreen fetchLines Error ${response.statusCode}: ${response.body}");
-        throw Exception("Failed to load sales order lines");
+        debugPrint("❌ fetchLines Error ${response.statusCode}: ${response.body}");
+        setState(() => isLoading = false);
+
+        // رسالة أوضح بدل Failed وخلاص
+        _showSnackBar("Error loading lines: HTTP ${response.statusCode}");
       }
     } catch (e) {
       setState(() => isLoading = false);
@@ -170,7 +181,6 @@ class _ScanScreenState extends State<ScanScreen> {
     });
   }
 
-  /// حفظ الكمية المعلّقة (OK)
   void _savePendingQty() {
     final val = int.tryParse(qtyCtrl.text.trim());
     if (val == null || val <= 0) {
@@ -184,7 +194,6 @@ class _ScanScreenState extends State<ScanScreen> {
     Future.delayed(const Duration(milliseconds: 120), _ensureFocus);
   }
 
-  /// تصفير الكمية المعلّقة
   void _resetPendingQty() {
     setState(() {
       _pendingQty = 0;
@@ -192,7 +201,6 @@ class _ScanScreenState extends State<ScanScreen> {
     _ensureFocus();
   }
 
-  /// مسح مؤقت السطر الحالي
   void _clearLine() {
     if (selectedLine == null) return;
     setState(() {
@@ -201,7 +209,6 @@ class _ScanScreenState extends State<ScanScreen> {
     Future.delayed(const Duration(milliseconds: 70), _ensureFocus);
   }
 
-  /// زر ADD: يضيف للكمية الحالية +=
   void _addQtyToSelectedLine() {
     if (selectedLine == null) {
       return;
@@ -228,7 +235,6 @@ class _ScanScreenState extends State<ScanScreen> {
 
     if (totalIfAdd > line.orderedQty) {
       _showOverDialog(line.orderedQty, current, adding);
-      // في سيناريوك: الزيادة مسموح بيها
     }
 
     setState(() {
@@ -259,23 +265,16 @@ class _ScanScreenState extends State<ScanScreen> {
       return;
     }
 
-    // ✅ برضه هنا نستخدم الـ Base URL
-    final baseUrlProvider =
-    Provider.of<BaseUrlProvider>(context, listen: false);
-    String? baseUrl = baseUrlProvider.baseUrl;
+    final baseUrlProvider = Provider.of<BaseUrlProvider>(context, listen: false);
 
-    if (baseUrl == null || baseUrl.trim().isEmpty) {
+    if (baseUrlProvider.normalizedBaseUrl.trim().isEmpty) {
       _showSnackBar("Base URL is not set. Please go to Settings.");
       return;
     }
 
-    baseUrl = baseUrl.trim();
-    baseUrl = baseUrl.replaceAll(RegExp(r'/+$'), '');
-
-    final url =
-        "$baseUrl/api/SalesOrderLine/UpdateOrderDetailsFSC/"
-        "${Uri.encodeComponent(widget.txnID)}/"
-        "${Uri.encodeComponent(userID.toString())}";
+    final url = baseUrlProvider.apiUrl(
+      "api/SalesOrderLine/UpdateOrderDetailsFSC/${Uri.encodeComponent(widget.txnID)}/${Uri.encodeComponent(userID.toString())}",
+    );
 
     debugPrint("➡️ ScanScreen DONE URL = $url");
 
@@ -428,7 +427,6 @@ class _ScanScreenState extends State<ScanScreen> {
     return result ?? false;
   }
 
-  /// Bootstrap: لو الحقل فاضي = 1، أو 1..3
   bool _bootstrapPendingQtyIfSmall() {
     final raw = qtyCtrl.text.trim();
     if (raw.isEmpty) {
@@ -444,7 +442,6 @@ class _ScanScreenState extends State<ScanScreen> {
     return false;
   }
 
-  /// Scan: يضيف الكمية المعلّقة للسطر المطابق
   void _applyScannedBarcode(String barcode) {
     if (_pendingQty <= 0) {
       final captured = _bootstrapPendingQtyIfSmall();
@@ -559,15 +556,14 @@ class _ScanScreenState extends State<ScanScreen> {
     );
   }
 
-  /// Sort A→Z أو Z→A حسب الكود
   void _toggleSort() {
     setState(() {
       _sortAscending = !_sortAscending;
 
       if (_sortAscending) {
-        lines.sort((a, b) => a.code.compareTo(b.code)); // A → Z
+        lines.sort((a, b) => a.code.compareTo(b.code));
       } else {
-        lines.sort((a, b) => b.code.compareTo(a.code)); // Z → A
+        lines.sort((a, b) => b.code.compareTo(a.code));
       }
 
       _rowKeys = List.generate(lines.length, (_) => GlobalKey());
@@ -575,7 +571,6 @@ class _ScanScreenState extends State<ScanScreen> {
     });
   }
 
-  /// Toggle إظهار / إخفاء الأصناف اللي خلصت أو Over
   void _toggleShowCompleted() {
     setState(() {
       _showCompleted = !_showCompleted;
@@ -589,7 +584,6 @@ class _ScanScreenState extends State<ScanScreen> {
     });
   }
 
-  /// Scroll لصف معيّن في الجدول
   void _scrollToIndex(int index) {
     if (index < 0 || index >= _rowKeys.length) return;
 
@@ -617,7 +611,6 @@ class _ScanScreenState extends State<ScanScreen> {
     );
   }
 
-  /// صندوق إدخال الكمية + OK
   Widget _qtyBox({required bool isTablet}) {
     final tfWidth = isTablet ? 120.0 : 100.0;
     return Container(
@@ -677,7 +670,6 @@ class _ScanScreenState extends State<ScanScreen> {
     final size = MediaQuery.of(context).size;
     final isTablet = size.width >= 600;
 
-    // ✅ نبني الـ rows هنا بناءً على الحالة (خلص/Over/لسه)
     final dataRows = <DataRow>[];
     for (int i = 0; i < lines.length; i++) {
       final line = lines[i];
@@ -688,7 +680,6 @@ class _ScanScreenState extends State<ScanScreen> {
       final selected = i == selectedIndex;
       final rowKey = (i < _rowKeys.length) ? _rowKeys[i] : GlobalKey();
 
-      // لو مش عايز تظهر اللي خلصت → اخفيها
       if (!_showCompleted && (isCompleted || isOver)) {
         continue;
       }
@@ -698,9 +689,9 @@ class _ScanScreenState extends State<ScanScreen> {
           selected: selected,
           color: MaterialStateProperty.resolveWith<Color?>(
                 (states) {
-              if (selected) return const Color(0xFFE0ECFF); // أزرق فاتح
-              if (isOver) return const Color(0xFFFFE5E5);   // أحمر فاتح
-              if (isCompleted) return const Color(0xFFE5FFE5); // أخضر فاتح
+              if (selected) return const Color(0xFFE0ECFF);
+              if (isOver) return const Color(0xFFFFE5E5);
+              if (isCompleted) return const Color(0xFFE5FFE5);
               return null;
             },
           ),
@@ -742,7 +733,9 @@ class _ScanScreenState extends State<ScanScreen> {
           title: Text(
             'Scan - ${widget.soNumber}',
             style: const TextStyle(
-                color: Colors.white, fontWeight: FontWeight.w800),
+              color: Colors.white,
+              fontWeight: FontWeight.w800,
+            ),
           ),
           actions: [
             IconButton(
@@ -751,19 +744,13 @@ class _ScanScreenState extends State<ScanScreen> {
                 _sortAscending ? Icons.arrow_downward : Icons.arrow_upward,
                 color: Colors.white,
               ),
-              tooltip: _sortAscending ? 'Sort A → Z' : 'Sort Z → A',
             ),
             IconButton(
               onPressed: _toggleShowCompleted,
               icon: Icon(
-                _showCompleted
-                    ? Icons.check_circle
-                    : Icons.check_circle_outline,
+                _showCompleted ? Icons.check_circle : Icons.check_circle_outline,
                 color: Colors.white,
               ),
-              tooltip: _showCompleted
-                  ? 'Hide completed & over'
-                  : 'Show completed & over',
             ),
           ],
         ),
@@ -773,17 +760,19 @@ class _ScanScreenState extends State<ScanScreen> {
                 ? const Center(child: CircularProgressIndicator())
                 : Column(
               children: [
-                // Banner لعرض Pending Qty
                 Container(
                   width: double.infinity,
                   color: const Color(0xFFEFF6FF),
                   padding: const EdgeInsets.symmetric(
-                      horizontal: 16, vertical: 8),
+                    horizontal: 16,
+                    vertical: 8,
+                  ),
                   child: Text(
                     "Pending Qty (for scan): $_pendingQty",
                     style: const TextStyle(
-                        fontWeight: FontWeight.w700,
-                        color: Color(0xFF1D4ED8)),
+                      fontWeight: FontWeight.w700,
+                      color: Color(0xFF1D4ED8),
+                    ),
                   ),
                 ),
                 Expanded(
@@ -792,31 +781,18 @@ class _ScanScreenState extends State<ScanScreen> {
                     scrollDirection: Axis.vertical,
                     child: DataTable(
                       headingRowColor: MaterialStateProperty.all(
-                          const Color(0xFFEFEFF4)),
+                        const Color(0xFFEFEFF4),
+                      ),
                       columns: const [
-                        DataColumn(
-                            label: Text('SKU',
-                                style: TextStyle(
-                                    fontWeight: FontWeight.w700))),
-                        DataColumn(
-                            label: Text('SOQ',
-                                style: TextStyle(
-                                    fontWeight: FontWeight.w700))),
-                        DataColumn(
-                            label: Text('Scanned',
-                                style: TextStyle(
-                                    fontWeight: FontWeight.w700))),
-                        DataColumn(
-                            label: Text('U/M',
-                                style: TextStyle(
-                                    fontWeight: FontWeight.w700))),
+                        DataColumn(label: Text('SKU')),
+                        DataColumn(label: Text('SOQ')),
+                        DataColumn(label: Text('Scanned')),
+                        DataColumn(label: Text('U/M')),
                       ],
                       rows: dataRows,
                     ),
                   ),
                 ),
-
-                // ===== Footer =====
                 Container(
                   width: double.infinity,
                   padding: EdgeInsets.symmetric(
@@ -845,17 +821,8 @@ class _ScanScreenState extends State<ScanScreen> {
                             style: ElevatedButton.styleFrom(
                               backgroundColor: const Color(0xFF2F76D2),
                               foregroundColor: Colors.white,
-                              padding: const EdgeInsets.symmetric(
-                                  horizontal: 14, vertical: 10),
-                              shape: RoundedRectangleBorder(
-                                  borderRadius:
-                                  BorderRadius.circular(8)),
                             ),
-                            child: const Text(
-                              '+',
-                              style: TextStyle(
-                                  fontWeight: FontWeight.w600),
-                            ),
+                            child: const Text('+'),
                           ),
                           _qtyBox(isTablet: isTablet),
                           OutlinedButton(
@@ -864,32 +831,12 @@ class _ScanScreenState extends State<ScanScreen> {
                           ),
                         ],
                       ),
-                      const SizedBox(height: 10),
-                      if (selectedLine != null)
-                        Text(
-                          selectedLine!.desc.isEmpty
-                              ? ''
-                              : selectedLine!.desc,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(
-                            fontSize: 16,
-                            fontWeight: FontWeight.w600,
-                          ),
-                        ),
                       const SizedBox(height: 12),
                       Row(
                         children: [
                           Expanded(
                             child: OutlinedButton(
                               onPressed: _confirmCancel,
-                              style: OutlinedButton.styleFrom(
-                                padding: const EdgeInsets.symmetric(
-                                    vertical: 14),
-                                shape: RoundedRectangleBorder(
-                                    borderRadius:
-                                    BorderRadius.circular(10)),
-                              ),
                               child: const Text('Cancel'),
                             ),
                           ),
@@ -900,17 +847,10 @@ class _ScanScreenState extends State<ScanScreen> {
                               style: ElevatedButton.styleFrom(
                                 backgroundColor:
                                 const Color(0xFF2F76D2),
-                                padding: const EdgeInsets.symmetric(
-                                    vertical: 14),
-                                shape: RoundedRectangleBorder(
-                                    borderRadius:
-                                    BorderRadius.circular(10)),
                               ),
                               child: const Text(
                                 'Done',
-                                style: TextStyle(
-                                    color: Colors.white,
-                                    fontWeight: FontWeight.w700),
+                                style: TextStyle(color: Colors.white),
                               ),
                             ),
                           ),
@@ -922,7 +862,6 @@ class _ScanScreenState extends State<ScanScreen> {
                 ),
               ],
             ),
-            // حقل الباركود المخفي
             Positioned(
               left: -100,
               top: -100,
@@ -937,8 +876,7 @@ class _ScanScreenState extends State<ScanScreen> {
                   showCursor: false,
                   readOnly: false,
                   textInputAction: TextInputAction.done,
-                  decoration:
-                  const InputDecoration.collapsed(hintText: ''),
+                  decoration: const InputDecoration.collapsed(hintText: ''),
                   onSubmitted: (v) => _processBarcode(v),
                 ),
               ),
@@ -995,10 +933,7 @@ class _SoLine {
       unit: json['unit']?.toString() ?? 'PCS',
       scanned: first,
       tempScanned: second,
-      barcodes: (json['barcodes'] as List?)
-          ?.map((e) => e.toString())
-          .toList() ??
-          [],
+      barcodes: (json['barcodes'] as List?)?.map((e) => e.toString()).toList() ?? [],
     );
   }
 }
