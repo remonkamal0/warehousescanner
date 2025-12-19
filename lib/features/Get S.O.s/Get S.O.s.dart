@@ -1,10 +1,13 @@
 import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
-import 'package:warehousescanner/features/Get%20S.O.s/widgets/sales_order_card.dart';
+import 'package:provider/provider.dart';
 
+import 'package:warehousescanner/features/Get%20S.O.s/widgets/sales_order_card.dart';
 import '../ScanScreen/ScanScreen.dart';
 import 'models/sales_order.dart';
+import '../../providers/auth_provider.dart';
+import '../../providers/base_url_provider.dart';
 
 class GetSOSScreen extends StatefulWidget {
   const GetSOSScreen({super.key});
@@ -18,11 +21,25 @@ class _GetSOSScreenState extends State<GetSOSScreen> {
   List<SalesOrder> soList = [];
   bool isLoading = true;
 
-  /// ✅ API Call
+  /// ✅ API Call – باستخدام baseUrl + userID
   Future<void> fetchSalesOrders() async {
-    const url = "http://10.50.1.214/api/SalesOrder/GetSalesOrderFSC";
-
     try {
+      // نجيب اليوزر ID من AuthProvider
+      final auth = Provider.of<AuthProvider>(context, listen: false);
+      final userId = auth.userID;
+
+      if (userId == null) {
+        setState(() => isLoading = false);
+        _showSnackBar("User ID not found, please login again.");
+        return;
+      }
+
+      // نجيب الـ Base URL من BaseUrlProvider
+      final baseUrl =
+          Provider.of<BaseUrlProvider>(context, listen: false).baseUrl;
+
+      final url = "$baseUrl/api/SalesOrder/GetSalesOrderFSC/$userId";
+
       final response = await http.get(Uri.parse(url));
 
       if (response.statusCode == 200) {
@@ -32,7 +49,8 @@ class _GetSOSScreenState extends State<GetSOSScreen> {
           isLoading = false;
         });
       } else {
-        throw Exception("Failed to load sales orders");
+        throw Exception(
+            "Failed to load sales orders (${response.statusCode})");
       }
     } catch (e) {
       setState(() => isLoading = false);
@@ -41,6 +59,7 @@ class _GetSOSScreenState extends State<GetSOSScreen> {
   }
 
   void _showSnackBar(String message) {
+    if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(content: Text(message)),
     );
@@ -49,6 +68,7 @@ class _GetSOSScreenState extends State<GetSOSScreen> {
   @override
   void initState() {
     super.initState();
+    // ينفع نستخدم Provider في initState مع listen:false
     fetchSalesOrders();
   }
 
@@ -135,6 +155,18 @@ class _GetSOSScreenState extends State<GetSOSScreen> {
           fontWeight: FontWeight.bold,
         ),
       ),
+      // لو عايز تزود زر settings هنا:
+      // actions: [
+      //   IconButton(
+      //     icon: const Icon(Icons.settings, color: Colors.white),
+      //     onPressed: () {
+      //       Navigator.push(
+      //         context,
+      //         MaterialPageRoute(builder: (_) => const SettingsScreen()),
+      //       );
+      //     },
+      //   ),
+      // ],
     );
   }
 
@@ -181,7 +213,8 @@ class _GetSOSScreenState extends State<GetSOSScreen> {
     );
   }
 
-  /// ✅ تعديل هنا عشان يعمل refresh بعد الـ Done
+  /// ✅ لما يختار S.O ويدوس Get → يروح ScanScreen
+  /// و ScanScreen أصلاً بتاخد userID من AuthProvider في _done()
   void _onScanPressed() async {
     if (selectedIndex == null) {
       _showSnackBar("Please select an S.O first");
@@ -199,7 +232,7 @@ class _GetSOSScreenState extends State<GetSOSScreen> {
       // ✅ لو رجع true من ScanScreen، نعمل refresh للقائمة
       if (result == true) {
         setState(() {
-          isLoading = true; // Optional: عرض loader أثناء التحميل
+          isLoading = true;
         });
         await fetchSalesOrders();
       }

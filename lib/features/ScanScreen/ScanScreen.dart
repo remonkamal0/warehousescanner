@@ -3,7 +3,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:http/http.dart' as http;
 import 'package:provider/provider.dart';
+
 import '../../providers/auth_provider.dart';
+import '../../providers/base_url_provider.dart'; // ✅ استخدمنا الباز يوارال هنا
 
 class ScanScreen extends StatefulWidget {
   final String soNumber;
@@ -78,6 +80,13 @@ class _ScanScreenState extends State<ScanScreen> {
     super.dispose();
   }
 
+  void _showSnackBar(String message) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(message)),
+    );
+  }
+
   // تركيز على الباركود + إخفاء الكيبورد
   void _ensureFocus() {
     if (!mounted) return;
@@ -114,10 +123,27 @@ class _ScanScreenState extends State<ScanScreen> {
     }
   }
 
+  /// ✅ جلب اللاينات باستخدام الـ Base URL
   Future<void> fetchLines() async {
-    final url =
-        "http://10.50.1.214/api/SalesOrderLine/GetOrderLinesWithBarcodesFSC/${widget.txnID}";
     try {
+      final baseUrlProvider =
+      Provider.of<BaseUrlProvider>(context, listen: false);
+      String? baseUrl = baseUrlProvider.baseUrl;
+
+      if (baseUrl == null || baseUrl.trim().isEmpty) {
+        setState(() => isLoading = false);
+        _showSnackBar("Base URL is not set. Please go to Settings.");
+        return;
+      }
+
+      baseUrl = baseUrl.trim();
+      baseUrl = baseUrl.replaceAll(RegExp(r'/+$'), '');
+
+      final url =
+          "$baseUrl/api/SalesOrderLine/GetOrderLinesWithBarcodesFSC/${widget.txnID}";
+
+      debugPrint("➡️ ScanScreen fetchLines URL = $url");
+
       final response = await http.get(Uri.parse(url));
       if (response.statusCode == 200) {
         final data = json.decode(response.body) as List;
@@ -128,10 +154,13 @@ class _ScanScreenState extends State<ScanScreen> {
         });
         Future.delayed(const Duration(milliseconds: 200), _ensureFocus);
       } else {
+        debugPrint(
+            "❌ ScanScreen fetchLines Error ${response.statusCode}: ${response.body}");
         throw Exception("Failed to load sales order lines");
       }
     } catch (e) {
       setState(() => isLoading = false);
+      _showSnackBar("Error loading lines: $e");
     }
   }
 
@@ -199,14 +228,13 @@ class _ScanScreenState extends State<ScanScreen> {
 
     if (totalIfAdd > line.orderedQty) {
       _showOverDialog(line.orderedQty, current, adding);
-      // في سيناريوك: الزيادة مسموح بيها، فمش بنعمل return
+      // في سيناريوك: الزيادة مسموح بيها
     }
 
     setState(() {
       line.tempScanned += adding;
       final total = line.scanned + line.tempScanned;
 
-      // لو الكمية بقت >= orderedQty والرو هيتخفي فى حالة _showCompleted = false
       if (total >= line.orderedQty && !_showCompleted) {
         selectedIndex = null;
       }
@@ -227,11 +255,29 @@ class _ScanScreenState extends State<ScanScreen> {
     final userID = authProvider.userID;
 
     if (userID == null) {
+      _showSnackBar("User ID not found, please login again.");
       return;
     }
 
+    // ✅ برضه هنا نستخدم الـ Base URL
+    final baseUrlProvider =
+    Provider.of<BaseUrlProvider>(context, listen: false);
+    String? baseUrl = baseUrlProvider.baseUrl;
+
+    if (baseUrl == null || baseUrl.trim().isEmpty) {
+      _showSnackBar("Base URL is not set. Please go to Settings.");
+      return;
+    }
+
+    baseUrl = baseUrl.trim();
+    baseUrl = baseUrl.replaceAll(RegExp(r'/+$'), '');
+
     final url =
-        "http://10.50.1.214/api/SalesOrderLine/UpdateOrderDetailsFSC/${widget.txnID}/$userID";
+        "$baseUrl/api/SalesOrderLine/UpdateOrderDetailsFSC/"
+        "${Uri.encodeComponent(widget.txnID)}/"
+        "${Uri.encodeComponent(userID.toString())}";
+
+    debugPrint("➡️ ScanScreen DONE URL = $url");
 
     try {
       final payload = lines
@@ -257,7 +303,7 @@ class _ScanScreenState extends State<ScanScreen> {
       }
     } catch (e) {
       if (mounted) {
-        // ممكن تضيف SnackBar هنا لو حابب
+        _showSnackBar("Error while submitting: $e");
       }
     }
   }
@@ -423,7 +469,6 @@ class _ScanScreenState extends State<ScanScreen> {
         line.tempScanned += adding;
         final total = line.scanned + line.tempScanned;
 
-        // لو total >= orderedQty → يختفي لو _showCompleted = false
         if (total >= line.orderedQty && !_showCompleted) {
           selectedIndex = null;
         } else {
@@ -653,9 +698,9 @@ class _ScanScreenState extends State<ScanScreen> {
           selected: selected,
           color: MaterialStateProperty.resolveWith<Color?>(
                 (states) {
-              if (selected) return const Color(0xFFE0ECFF); // أزرق فاتح للمحدد
-              if (isOver) return const Color(0xFFFFE5E5);   // أحمر فاتح لو Over
-              if (isCompleted) return const Color(0xFFE5FFE5); // أخضر فاتح لو Completed
+              if (selected) return const Color(0xFFE0ECFF); // أزرق فاتح
+              if (isOver) return const Color(0xFFFFE5E5);   // أحمر فاتح
+              if (isCompleted) return const Color(0xFFE5FFE5); // أخضر فاتح
               return null;
             },
           ),
@@ -808,8 +853,8 @@ class _ScanScreenState extends State<ScanScreen> {
                             ),
                             child: const Text(
                               '+',
-                              style:
-                              TextStyle(fontWeight: FontWeight.w600),
+                              style: TextStyle(
+                                  fontWeight: FontWeight.w600),
                             ),
                           ),
                           _qtyBox(isTablet: isTablet),
@@ -892,7 +937,8 @@ class _ScanScreenState extends State<ScanScreen> {
                   showCursor: false,
                   readOnly: false,
                   textInputAction: TextInputAction.done,
-                  decoration: const InputDecoration.collapsed(hintText: ''),
+                  decoration:
+                  const InputDecoration.collapsed(hintText: ''),
                   onSubmitted: (v) => _processBarcode(v),
                 ),
               ),

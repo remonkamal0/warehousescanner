@@ -1,12 +1,14 @@
 import 'dart:convert';
 import 'package:flutter/material.dart';
-import 'package:provider/provider.dart'; // ✅ مهم علشان توصل للـ AuthProvider
+import 'package:provider/provider.dart';
 import 'package:http/http.dart' as http;
-import 'package:warehousescanner/features/Get%20S.O.s/widgets/sales_order_card.dart';
 
+import 'package:warehousescanner/features/Get%20S.O.s/widgets/sales_order_card.dart';
 import '../Get S.O.s/models/sales_order.dart';
 import '../ReScanScreen/ReScanScreen.dart';
-import '../../providers/auth_provider.dart'; // ✅ استدعاء البروفايدر
+
+import '../../providers/auth_provider.dart';
+import '../../providers/base_url_provider.dart'; // ✅ هنا ضفنا الباز يوارال
 
 class ReScanSOSScreen extends StatefulWidget {
   const ReScanSOSScreen({super.key});
@@ -20,21 +22,39 @@ class _ReScanSOSScreenState extends State<ReScanSOSScreen> {
   List<SalesOrder> soList = [];
   bool isLoading = true;
 
-  /// ✅ API Call
+  /// ✅ API Call – باستخدام baseUrl + userID
   Future<void> fetchSalesOrders() async {
-    final userID =
-        Provider.of<AuthProvider>(context, listen: false).userID;
-
-    if (userID == null) {
-      _showSnackBar("User ID not found, please login again.");
-      setState(() => isLoading = false);
-      return;
-    }
-
-    final url =
-        "http://10.50.1.214/api/SalesOrder/GetSalesOrderSSC/$userID";
-
     try {
+      // 1) نجيب اليوزر ID من AuthProvider
+      final auth = Provider.of<AuthProvider>(context, listen: false);
+      final userID = auth.userID;
+
+      if (userID == null) {
+        setState(() => isLoading = false);
+        _showSnackBar("User ID not found, please login again.");
+        return;
+      }
+
+      // 2) نجيب الـ Base URL من BaseUrlProvider
+      final baseUrlProvider =
+      Provider.of<BaseUrlProvider>(context, listen: false);
+      String? baseUrl = baseUrlProvider.baseUrl;
+
+      if (baseUrl == null || baseUrl.trim().isEmpty) {
+        setState(() => isLoading = false);
+        _showSnackBar("Base URL is not set. Please go to Settings.");
+        return;
+      }
+
+      // 3) نعمل Normalize: نشيل المسافات و / في الآخر
+      baseUrl = baseUrl.trim();
+      baseUrl = baseUrl.replaceAll(RegExp(r'/+$'), '');
+
+      // 4) نركّب الـ URL النهائي
+      final url = "$baseUrl/api/SalesOrder/GetSalesOrderSSC/$userID";
+
+      debugPrint("➡️ ReScanSOS URL = $url");
+
       final response = await http.get(Uri.parse(url));
 
       if (response.statusCode == 200) {
@@ -44,7 +64,11 @@ class _ReScanSOSScreenState extends State<ReScanSOSScreen> {
           isLoading = false;
         });
       } else {
-        throw Exception("Failed to load sales orders");
+        debugPrint(
+            "❌ ReScanSOS Error ${response.statusCode}: ${response.body}");
+        throw Exception(
+          "Failed to load sales orders (${response.statusCode})",
+        );
       }
     } catch (e) {
       setState(() => isLoading = false);
@@ -53,6 +77,7 @@ class _ReScanSOSScreenState extends State<ReScanSOSScreen> {
   }
 
   void _showSnackBar(String message) {
+    if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(content: Text(message)),
     );
@@ -193,7 +218,7 @@ class _ReScanSOSScreenState extends State<ReScanSOSScreen> {
     );
   }
 
-  /// ✅ تم التعديل هنا
+  /// ✅ نفس الفكرة: لو رجعنا true من ReScanScreen نعمل refresh
   void _onScanPressed() async {
     if (selectedIndex == null) {
       _showSnackBar("Please select an S.O first");
@@ -208,10 +233,9 @@ class _ReScanSOSScreenState extends State<ReScanSOSScreen> {
         ),
       );
 
-      // ✅ لو رجعنا true من ReScanScreen نعمل refresh
       if (result == true) {
         setState(() {
-          isLoading = true; // عرض loader أثناء التحميل
+          isLoading = true;
         });
         await fetchSalesOrders();
       }

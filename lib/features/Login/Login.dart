@@ -6,6 +6,7 @@ import 'package:provider/provider.dart';
 
 import '../../core/constants/color_managers.dart';
 import '../../providers/auth_provider.dart';
+import '../../providers/base_url_provider.dart'; // ✅ مهم
 import '../Home/HomeScreen.dart';
 
 class LoginScreen extends StatefulWidget {
@@ -28,6 +29,55 @@ class _LoginScreenState extends State<LoginScreen> {
     fetchUsers();
   }
 
+  /// ====== Dialog لتعديل الـ Base URL ======
+  Future<void> _showBaseUrlDialog() async {
+    final baseUrlProvider =
+    Provider.of<BaseUrlProvider>(context, listen: false);
+    final TextEditingController ctrl =
+    TextEditingController(text: baseUrlProvider.baseUrl);
+
+    await showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+        title: const Text(
+          'Server Settings',
+          style: TextStyle(fontWeight: FontWeight.bold),
+        ),
+        content: TextField(
+          controller: ctrl,
+          decoration: const InputDecoration(
+            labelText: 'Base URL',
+            hintText: 'Enter Base URL',
+            border: OutlineInputBorder(),
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Cancel'),
+          ),
+          ElevatedButton(
+            onPressed: () {
+              final text = ctrl.text.trim();
+              if (text.isEmpty) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(
+                      content: Text('Please enter a valid Base URL')),
+                );
+                return;
+              }
+              baseUrlProvider.setBaseUrl(text);
+              Navigator.pop(context);
+            },
+            child: const Text('Save'),
+          ),
+        ],
+      ),
+    );
+  }
+
   /// جلب المستخدمين من الـ API
   Future<void> fetchUsers() async {
     setState(() {
@@ -36,8 +86,19 @@ class _LoginScreenState extends State<LoginScreen> {
     });
 
     try {
-      final response =
-      await http.get(Uri.parse("http://10.50.1.214/api/user"));
+      final baseUrl =
+          Provider.of<BaseUrlProvider>(context, listen: false).baseUrl;
+
+      if (baseUrl.isEmpty) {
+        setState(() => isLoading = false);
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text("Please set server Base URL first.")),
+        );
+        return;
+      }
+
+      final uri = Uri.parse("$baseUrl/api/user");
+      final response = await http.get(uri);
 
       if (response.statusCode == 200) {
         final List<dynamic> data = jsonDecode(response.body);
@@ -46,7 +107,9 @@ class _LoginScreenState extends State<LoginScreen> {
         });
       } else {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text("Failed to fetch users: ${response.statusCode}")),
+          SnackBar(
+              content:
+              Text("Failed to fetch users: ${response.statusCode}")),
         );
       }
     } catch (e) {
@@ -64,7 +127,18 @@ class _LoginScreenState extends State<LoginScreen> {
       setState(() => isLoading = true);
 
       try {
-        var uri = Uri.parse("http://10.50.1.214/api/user/login");
+        final baseUrl =
+            Provider.of<BaseUrlProvider>(context, listen: false).baseUrl;
+
+        if (baseUrl.isEmpty) {
+          setState(() => isLoading = false);
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text("Please set server Base URL first.")),
+          );
+          return;
+        }
+
+        final uri = Uri.parse("$baseUrl/api/user/login");
         var request = http.MultipartRequest("POST", uri);
 
         request.fields['LoginNumber'] = selectedLoginNumber!;
@@ -87,7 +161,8 @@ class _LoginScreenState extends State<LoginScreen> {
             );
           } else {
             ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(content: Text("Login failed: invalid response")),
+              const SnackBar(
+                  content: Text("Login failed: invalid response from server")),
             );
           }
         } else {
@@ -111,7 +186,8 @@ class _LoginScreenState extends State<LoginScreen> {
       setState(() => isLoading = false);
     } else {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text("Please select a user and enter password")),
+        const SnackBar(
+            content: Text("Please select a user and enter password")),
       );
     }
   }
@@ -135,9 +211,14 @@ class _LoginScreenState extends State<LoginScreen> {
         ),
         actions: [
           IconButton(
+            icon: const Icon(Icons.settings, color: Colors.white),
+            tooltip: "Server Settings",
+            onPressed: _showBaseUrlDialog, // ✅ فتح إعداد الـ Base URL
+          ),
+          IconButton(
             icon: const Icon(Icons.refresh, color: Colors.white),
             tooltip: "Refresh Users",
-            onPressed: fetchUsers, // ⬅ استدعاء الفانكشن
+            onPressed: fetchUsers,
           ),
         ],
       ),
@@ -167,7 +248,8 @@ class _LoginScreenState extends State<LoginScreen> {
                           : Colors.white,
                       foregroundColor: Colors.blue.shade900,
                       side: const BorderSide(color: Colors.blue),
-                      minimumSize: Size(double.infinity, isTablet ? 60 : 50),
+                      minimumSize:
+                      Size(double.infinity, isTablet ? 60 : 50),
                       shape: RoundedRectangleBorder(
                         borderRadius: BorderRadius.circular(10),
                       ),
@@ -200,12 +282,14 @@ class _LoginScreenState extends State<LoginScreen> {
                   controller: passwordController,
                   obscureText: true,
                   obscuringCharacter: '•',
-                  keyboardType: const TextInputType.numberWithOptions(
+                  keyboardType:
+                  const TextInputType.numberWithOptions(
                       decimal: false, signed: false),
                   inputFormatters: [
                     FilteringTextInputFormatter.digitsOnly,
                   ],
-                  style: TextStyle(fontSize: isTablet ? 20 : 16),
+                  style:
+                  TextStyle(fontSize: isTablet ? 20 : 16),
                   decoration: InputDecoration(
                     hintText: "Password",
                     contentPadding: EdgeInsets.symmetric(
@@ -224,7 +308,8 @@ class _LoginScreenState extends State<LoginScreen> {
                   style: ElevatedButton.styleFrom(
                     backgroundColor: Colors.blue.shade900,
                     foregroundColor: Colors.white,
-                    minimumSize: Size(double.infinity, isTablet ? 60 : 50),
+                    minimumSize:
+                    Size(double.infinity, isTablet ? 60 : 50),
                     shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(12),
                     ),

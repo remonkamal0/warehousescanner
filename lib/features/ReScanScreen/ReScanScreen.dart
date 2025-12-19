@@ -4,6 +4,7 @@ import 'package:flutter/services.dart';
 import 'package:http/http.dart' as http;
 import 'package:provider/provider.dart';
 import '../../providers/auth_provider.dart';
+import '../../providers/base_url_provider.dart'; // ✅ استخدمنا الباز يوارال هنا
 
 class ReScanScreen extends StatefulWidget {
   final String soNumber;
@@ -79,10 +80,36 @@ class _ReScanScreenState extends State<ReScanScreen> {
     SystemChannels.textInput.invokeMethod('TextInput.hide');
   }
 
+  void _showSnackBar(String message) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(message)),
+    );
+  }
+
+  /// ✅ جلب اللاينات باستخدام الـ Base URL
   Future<void> fetchLines() async {
-    final url =
-        "http://10.50.1.214/api/SalesOrderLine/GetOrderLinesWithBarcodesSSC/${widget.txnID}";
     try {
+      // نجيب الـ baseUrl من الـ Provider
+      final baseUrlProvider =
+      Provider.of<BaseUrlProvider>(context, listen: false);
+      String? baseUrl = baseUrlProvider.baseUrl;
+
+      if (baseUrl == null || baseUrl.trim().isEmpty) {
+        setState(() => isLoading = false);
+        _showSnackBar("Base URL is not set. Please go to Settings.");
+        return;
+      }
+
+      // Normalize: نشيل المسافات و / الزيادة في الآخر
+      baseUrl = baseUrl.trim();
+      baseUrl = baseUrl.replaceAll(RegExp(r'/+$'), '');
+
+      final url =
+          "$baseUrl/api/SalesOrderLine/GetOrderLinesWithBarcodesSSC/${widget.txnID}";
+
+      debugPrint("➡️ ReScanScreen fetchLines URL = $url");
+
       final response = await http.get(Uri.parse(url));
       if (response.statusCode == 200) {
         final data = json.decode(response.body) as List;
@@ -105,10 +132,13 @@ class _ReScanScreenState extends State<ReScanScreen> {
 
         _ensureBarcodeFocus();
       } else {
+        debugPrint(
+            "❌ ReScan fetchLines Error ${response.statusCode}: ${response.body}");
         throw Exception("Failed to load sales order lines");
       }
     } catch (e) {
       setState(() => isLoading = false);
+      _showSnackBar("Error loading lines: $e");
       _ensureBarcodeFocus();
     }
   }
@@ -222,9 +252,23 @@ class _ReScanScreenState extends State<ReScanScreen> {
     final auth = context.read<AuthProvider>();
     final userId = auth.userID;
     if (userId == null) {
+      _showSnackBar("User ID not found, please login again.");
       _ensureBarcodeFocus();
       return;
     }
+
+    // ✅ نجيب الـ Base URL برضه هنا
+    final baseUrlProvider = context.read<BaseUrlProvider>();
+    String? baseUrl = baseUrlProvider.baseUrl;
+
+    if (baseUrl == null || baseUrl.trim().isEmpty) {
+      _showSnackBar("Base URL is not set. Please go to Settings.");
+      _ensureBarcodeFocus();
+      return;
+    }
+
+    baseUrl = baseUrl.trim();
+    baseUrl = baseUrl.replaceAll(RegExp(r'/+$'), '');
 
     final String salesOrderId =
     (lines.isNotEmpty && lines.first.txnid.isNotEmpty)
@@ -232,9 +276,11 @@ class _ReScanScreenState extends State<ReScanScreen> {
         : widget.txnID;
 
     final url =
-        "http://10.50.1.214/api/SalesOrderLine/UpdateOrderDetailsSSC/"
+        "$baseUrl/api/SalesOrderLine/UpdateOrderDetailsSSC/"
         "${Uri.encodeComponent(salesOrderId)}/"
         "${Uri.encodeComponent(userId.toString())}";
+
+    debugPrint("➡️ ReScanScreen DONE URL = $url");
 
     try {
       final payload = lines
@@ -261,7 +307,7 @@ class _ReScanScreenState extends State<ReScanScreen> {
       }
     } catch (e) {
       if (mounted) {
-        // ممكن تضيف SnackBar لو حابب
+        _showSnackBar("Error while submitting: $e");
       }
     } finally {
       _ensureBarcodeFocus();

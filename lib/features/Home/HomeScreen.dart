@@ -119,10 +119,7 @@ class HomeScreen extends StatelessWidget {
           ),
           TextButton(
             onPressed: () {
-              // ✅ اعمل logout
               Provider.of<AuthProvider>(context, listen: false).clearUser();
-
-              // ✅ روح لشاشة اللوجين وامسح الـ stack
               Navigator.pushNamedAndRemoveUntil(
                 context,
                 RoutesName.kLogin,
