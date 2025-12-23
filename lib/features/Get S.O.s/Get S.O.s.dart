@@ -21,36 +21,48 @@ class _GetSOSScreenState extends State<GetSOSScreen> {
   List<SalesOrder> soList = [];
   bool isLoading = true;
 
-  /// ✅ API Call – باستخدام baseUrl + userID
   Future<void> fetchSalesOrders() async {
-    try {
-      // نجيب اليوزر ID من AuthProvider
-      final auth = Provider.of<AuthProvider>(context, listen: false);
-      final userId = auth.userID;
+    setState(() => isLoading = true);
 
+    try {
+      final userId = context.read<AuthProvider>().userID;
       if (userId == null) {
         setState(() => isLoading = false);
         _showSnackBar("User ID not found, please login again.");
         return;
       }
 
-      // نجيب الـ Base URL من BaseUrlProvider
-      final baseUrl =
-          Provider.of<BaseUrlProvider>(context, listen: false).baseUrl;
+      final baseUrlProvider = context.read<BaseUrlProvider>();
+      if (baseUrlProvider.normalizedBaseUrl.trim().isEmpty) {
+        setState(() => isLoading = false);
+        _showSnackBar("Base URL is not set. Please go to Settings.");
+        return;
+      }
 
-      final url = "$baseUrl/api/SalesOrder/GetSalesOrderFSC/$userId";
+      final url = baseUrlProvider.apiUrl(
+        "api/SalesOrder/GetSalesOrderFSC/${Uri.encodeComponent(userId.toString())}",
+      );
 
-      final response = await http.get(Uri.parse(url));
+      debugPrint("➡️ GetSOS URL = $url");
+
+      final response = await http.get(
+        Uri.parse(url),
+        headers: {"Accept": "application/json"},
+      );
 
       if (response.statusCode == 200) {
-        final List<dynamic> data = json.decode(response.body);
+        final decoded = json.decode(response.body);
+        final List data = (decoded is List) ? decoded : [];
+
         setState(() {
           soList = data.map((e) => SalesOrder.fromJson(e)).toList();
+          selectedIndex = null;
           isLoading = false;
         });
       } else {
-        throw Exception(
-            "Failed to load sales orders (${response.statusCode})");
+        debugPrint("❌ GetSOS Error ${response.statusCode}: ${response.body}");
+        setState(() => isLoading = false);
+        _showSnackBar("Failed to load sales orders: HTTP ${response.statusCode}");
       }
     } catch (e) {
       setState(() => isLoading = false);
@@ -68,7 +80,6 @@ class _GetSOSScreenState extends State<GetSOSScreen> {
   @override
   void initState() {
     super.initState();
-    // ينفع نستخدم Provider في initState مع listen:false
     fetchSalesOrders();
   }
 
@@ -94,10 +105,8 @@ class _GetSOSScreenState extends State<GetSOSScreen> {
       )
           : Column(
         children: [
-          /// ✅ Header Row
           Container(
-            padding: const EdgeInsets.symmetric(
-                horizontal: 16, vertical: 12),
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
             color: Colors.blue.shade50,
             child: Row(
               children: [
@@ -127,11 +136,7 @@ class _GetSOSScreenState extends State<GetSOSScreen> {
               ],
             ),
           ),
-
-          /// ✅ List
           Expanded(child: _buildListView()),
-
-          /// ✅ Button
           _buildScanButton(isTablet),
           const SizedBox(height: 5),
         ],
@@ -155,18 +160,13 @@ class _GetSOSScreenState extends State<GetSOSScreen> {
           fontWeight: FontWeight.bold,
         ),
       ),
-      // لو عايز تزود زر settings هنا:
-      // actions: [
-      //   IconButton(
-      //     icon: const Icon(Icons.settings, color: Colors.white),
-      //     onPressed: () {
-      //       Navigator.push(
-      //         context,
-      //         MaterialPageRoute(builder: (_) => const SettingsScreen()),
-      //       );
-      //     },
-      //   ),
-      // ],
+      actions: [
+        IconButton(
+          tooltip: "Refresh",
+          onPressed: fetchSalesOrders,
+          icon: const Icon(Icons.refresh, color: Colors.white),
+        ),
+      ],
     );
   }
 
@@ -213,29 +213,24 @@ class _GetSOSScreenState extends State<GetSOSScreen> {
     );
   }
 
-  /// ✅ لما يختار S.O ويدوس Get → يروح ScanScreen
-  /// و ScanScreen أصلاً بتاخد userID من AuthProvider في _done()
   void _onScanPressed() async {
     if (selectedIndex == null) {
       _showSnackBar("Please select an S.O first");
-    } else {
-      final result = await Navigator.push(
-        context,
-        MaterialPageRoute(
-          builder: (_) => ScanScreen(
-            soNumber: soList[selectedIndex!].soNumber,
-            txnID: soList[selectedIndex!].txnID,
-          ),
-        ),
-      );
+      return;
+    }
 
-      // ✅ لو رجع true من ScanScreen، نعمل refresh للقائمة
-      if (result == true) {
-        setState(() {
-          isLoading = true;
-        });
-        await fetchSalesOrders();
-      }
+    final result = await Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => ScanScreen(
+          soNumber: soList[selectedIndex!].soNumber,
+          txnID: soList[selectedIndex!].txnID,
+        ),
+      ),
+    );
+
+    if (result == true) {
+      await fetchSalesOrders();
     }
   }
 }
