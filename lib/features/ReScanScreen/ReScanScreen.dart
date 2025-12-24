@@ -622,11 +622,11 @@ class _ReScanScreenState extends State<ReScanScreen> {
                     ? 'Hide completed & over'
                     : 'Show completed & over',
               ),
-              IconButton(
-                onPressed: fetchLines,
-                icon: const Icon(Icons.refresh, color: Colors.white),
-                tooltip: 'Refresh',
-              ),
+              // IconButton(
+              //   onPressed: fetchLines,
+              //   icon: const Icon(Icons.refresh, color: Colors.white),
+              //   tooltip: 'Refresh',
+              // ),
             ],
           ),
           body: Stack(

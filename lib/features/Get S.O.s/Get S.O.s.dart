@@ -161,11 +161,11 @@ class _GetSOSScreenState extends State<GetSOSScreen> {
         ),
       ),
       actions: [
-        IconButton(
-          tooltip: "Refresh",
-          onPressed: fetchSalesOrders,
-          icon: const Icon(Icons.refresh, color: Colors.white),
-        ),
+        // IconButton(
+        //   tooltip: "Refresh",
+        //   onPressed: fetchSalesOrders,
+        //   icon: const Icon(Icons.refresh, color: Colors.white),
+        // ),
       ],
     );
   }

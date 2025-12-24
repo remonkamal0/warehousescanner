@@ -109,7 +109,7 @@ class _ScanScreenState extends State<ScanScreen> {
     }
   }
 
-  /// ✅✅✅ أهم تعديل هنا: GetOrderLinesWithBarcodesFSC/{ForderId}/{userid}
+  /// ✅✅✅ GetOrderLinesWithBarcodesFSC/{ForderId}/{userid}
   Future<void> fetchLines() async {
     setState(() => isLoading = true);
 
@@ -125,7 +125,6 @@ class _ScanScreenState extends State<ScanScreen> {
 
       final baseUrlProvider = context.read<BaseUrlProvider>();
 
-      // لو انت عامل normalized/apiUrl (زي الكود اللي اتأكدنا عليه)
       if (baseUrlProvider.normalizedBaseUrl.trim().isEmpty) {
         setState(() => isLoading = false);
         _showSnackBar("Base URL is not set. Please go to Settings.");
@@ -145,19 +144,19 @@ class _ScanScreenState extends State<ScanScreen> {
 
       if (response.statusCode == 200) {
         final decoded = json.decode(response.body);
-
-        // أمان: لو السيرفر رجّع object بدل list
         final List data = (decoded is List) ? decoded : [];
 
         setState(() {
           lines = data.map((e) => _SoLine.fromJson(e)).toList();
           _rowKeys = List.generate(lines.length, (_) => GlobalKey());
           isLoading = false;
+          selectedIndex = null; // علشان لو كان متحدد قبل الريفرش
         });
 
-        // لو انت مخفي الـ completed والـ over، ممكن يبان فاضي لو كله خلص
         if (lines.isNotEmpty && !_showCompleted) {
-          final visible = lines.where((l) => (l.scanned + l.tempScanned) < l.orderedQty).length;
+          final visible = lines
+              .where((l) => (l.scanned + l.tempScanned) < l.orderedQty)
+              .length;
           debugPrint("ℹ️ Visible(not completed) rows: $visible / total: ${lines.length}");
         }
 
@@ -165,8 +164,6 @@ class _ScanScreenState extends State<ScanScreen> {
       } else {
         debugPrint("❌ fetchLines Error ${response.statusCode}: ${response.body}");
         setState(() => isLoading = false);
-
-        // رسالة أوضح بدل Failed وخلاص
         _showSnackBar("Error loading lines: HTTP ${response.statusCode}");
       }
     } catch (e) {
@@ -665,6 +662,139 @@ class _ScanScreenState extends State<ScanScreen> {
     );
   }
 
+  // ✅✅✅ (الجديد) كارت تفاصيل المنتج تحت الأزرار
+  Widget _productDetailsCard(_SoLine line) {
+    final total = line.scanned + line.tempScanned;
+    final remaining = (line.orderedQty - total);
+    final isCompleted = total == line.orderedQty;
+    final isOver = total > line.orderedQty;
+
+    Color chipBg;
+    Color chipFg;
+    String status;
+
+    if (isOver) {
+      chipBg = const Color(0xFFFFE5E5);
+      chipFg = const Color(0xFFB00020);
+      status = "OVER";
+    } else if (isCompleted) {
+      chipBg = const Color(0xFFE5FFE5);
+      chipFg = const Color(0xFF137333);
+      status = "COMPLETED";
+    } else {
+      chipBg = const Color(0xFFEFF6FF);
+      chipFg = const Color(0xFF1D4ED8);
+      status = "IN PROGRESS";
+    }
+
+    return Container(
+      margin: const EdgeInsets.only(top: 10),
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: const Color(0xFFF9FAFB),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: const Color(0xFFE5E7EB)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // header
+          Row(
+            children: [
+              // Expanded(
+              //   child: Text(
+              //     "${line.code} • ${line.unit}",
+              //     maxLines: 1,
+              //     overflow: TextOverflow.ellipsis,
+              //     style: const TextStyle(
+              //       fontWeight: FontWeight.w800,
+              //       fontSize: 16,
+              //     ),
+              //   ),
+              // ),
+              // Container(
+              //   padding:
+              //   const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+              //   decoration: BoxDecoration(
+              //     color: chipBg,
+              //     borderRadius: BorderRadius.circular(999),
+              //     border: Border.all(color: const Color(0xFFE5E7EB)),
+              //   ),
+              //   child: Text(
+              //     status,
+              //     style: TextStyle(
+              //       color: chipFg,
+              //       fontWeight: FontWeight.w800,
+              //       fontSize: 12,
+              //     ),
+              //   ),
+              // ),
+            ],
+          ),
+          const SizedBox(height: 6),
+
+          if (line.desc.trim().isNotEmpty)
+            Text(
+              line.desc,
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(
+                fontSize: 14,
+                height: 1.2,
+                fontWeight: FontWeight.w600,
+                color: Color(0xFF374151),
+              ),
+            ),
+
+          const SizedBox(height: 10),
+
+          // Wrap(
+          //   spacing: 10,
+          //   runSpacing: 10,
+          //   children: [
+          //     _miniStat("Ordered", "${line.orderedQty}"),
+          //     _miniStat("Scanned", "$total"),
+          //     _miniStat("Remaining", "${remaining < 0 ? 0 : remaining}"),
+          //     _miniStat("Rate", line.rate.toStringAsFixed(2)),
+          //   ],
+          // ),
+        ],
+      ),
+    );
+  }
+
+  Widget _miniStat(String label, String value) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: const Color(0xFFE5E7EB)),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text(
+            "$label: ",
+            style: const TextStyle(
+              color: Color(0xFF6B7280),
+              fontWeight: FontWeight.w700,
+              fontSize: 12,
+            ),
+          ),
+          Text(
+            value,
+            style: const TextStyle(
+              color: Color(0xFF111827),
+              fontWeight: FontWeight.w900,
+              fontSize: 13,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final size = MediaQuery.of(context).size;
@@ -831,6 +961,10 @@ class _ScanScreenState extends State<ScanScreen> {
                           ),
                         ],
                       ),
+
+                      // ✅✅✅ هنا مكان تفاصيل المنتج "تحت الأزرار"
+                      if (selectedLine != null) _productDetailsCard(selectedLine!),
+
                       const SizedBox(height: 12),
                       Row(
                         children: [
@@ -845,8 +979,7 @@ class _ScanScreenState extends State<ScanScreen> {
                             child: ElevatedButton(
                               onPressed: _confirmDone,
                               style: ElevatedButton.styleFrom(
-                                backgroundColor:
-                                const Color(0xFF2F76D2),
+                                backgroundColor: const Color(0xFF2F76D2),
                               ),
                               child: const Text(
                                 'Done',
@@ -933,7 +1066,8 @@ class _SoLine {
       unit: json['unit']?.toString() ?? 'PCS',
       scanned: first,
       tempScanned: second,
-      barcodes: (json['barcodes'] as List?)?.map((e) => e.toString()).toList() ?? [],
+      barcodes:
+      (json['barcodes'] as List?)?.map((e) => e.toString()).toList() ?? [],
     );
   }
 }
